@@ -2,14 +2,14 @@ pipeline {
     agent { label 'stds-backend' }
 
     environment {
-        PROJECT_DIR = '/home/ifan'  // 你的專案目錄路徑
+        PROJECT_DIR = '/home/ifan' 
     }
 
     stages {
         stage('Checkout') {
             steps {
                 git branch: 'main', 
-                url: 'https://github.com/your-username/your-repo.git',
+                url: 'https://github.com/ifan0927/stds_backend.git',
             }
         }
 
@@ -60,7 +60,6 @@ pipeline {
             echo '部署失敗！'
         }
         always {
-            // 可以添加清理操作（如有需要）
             echo '部署流程完成'
         }
     }
