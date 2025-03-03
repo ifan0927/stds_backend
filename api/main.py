@@ -36,3 +36,7 @@ app.include_router(emails.router)
 @app.get("/")
 def read_root():
     return {"message": "Welcome to Estate Management API"}
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
