@@ -90,7 +90,6 @@ services:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - ./promtail:/etc/promtail
       - promtail_data:/tmp
-    command: sh -c "/etc/promtail/setup.sh"
     environment:
       - LOKI_HOST=${LOKI_HOST}
       - LOKI_PORT=${LOKI_PORT}
