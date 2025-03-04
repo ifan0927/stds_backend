@@ -11,7 +11,7 @@ pipeline {
     }
     
     environment {
-        GCP_BUCKET = credentials('d363e5cc-9369-43d7-93db-804aa17626f7')
+        GCP_BUCKET = credentials('gcp-bucket-name')
         SQL_FILE = 'init.sql'
     }
     
@@ -29,19 +29,19 @@ pipeline {
         stage('Setup Environment') {
             steps {
                 // docker-compose 設置環境變數
-                withCredentials([file(credentialsId: '07fca1b5-4273-403c-99c8-b3979c18c866', variable: 'DOCKER_ENV')]) {
+                withCredentials([file(credentialsId: 'docker-compose', variable: 'DOCKER_ENV')]) {
                     sh 'cp $DOCKER_ENV .env'
                     sh 'chmod 644 .env'
                 }
                 
                 // FastAPI 應用設置環境變數
-                withCredentials([file(credentialsId: '919b3a7c-0306-4d9a-911d-814150a8e6dc', variable: 'API_ENV')]) {
+                withCredentials([file(credentialsId: 'fastapi', variable: 'API_ENV')]) {
                     sh 'cp $API_ENV api/.env'
                     sh 'chmod 644 api/.env'
                 }
                 
                 // 從 GCP Cloud Storage 下載 init.sql
-                withCredentials([file(credentialsId: '28cf4fd6-0347-4fb5-9100-b2da894be9dd', variable: 'GOOGLE_APPLICATION_CREDENTIALS')]) {
+                withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GOOGLE_APPLICATION_CREDENTIALS')]) {
                     sh '''
                         # 安裝 gsutil 
                         which gsutil || (curl https://sdk.cloud.google.com | bash -s -- --disable-prompts && export PATH=$PATH:~/google-cloud-sdk/bin)
