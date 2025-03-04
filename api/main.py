@@ -1,6 +1,6 @@
 # main.py
 from fastapi import FastAPI
-from fastapi import Request as request
+from fastapi import Request
 import os
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -46,14 +46,17 @@ def read_root():
 def health_check():
     return {"status": "ok"}
 
-@app.route("/callback", methods=['POST'])
-def callback():
+@app.post("/callback")
+async def callback(request: Request):
     # 獲取LINE平台傳送的事件
-    signature = request.headers['X-Line-Signature']
-    body = request.get_data(as_text=True)
+    body = await request.body()
+    body_text = body.decode('utf-8')
+    
+    # 獲取簽名（如果有的話）
+    signature = request.headers.get('X-Line-Signature', '')
     
     try:
-        events = json.loads(body)['events']
+        events = json.loads(body_text)['events']
         
         for event in events:
             # 檢查事件是否來自群組
@@ -61,8 +64,10 @@ def callback():
                 # 提取並打印群組ID
                 group_id = event['source']['groupId']
                 print(f"群組ID: {group_id}")
-
-            
-        return 'OK'
+                
+                # 這裡可以添加將群組ID保存到數據庫的代碼
+                
+        return {"status": "OK"}
     except Exception as e:
         print(f"Error: {e}")
+        return {"status": "error", "message": str(e)}
