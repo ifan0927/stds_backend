@@ -25,8 +25,8 @@
 
 API 使用 OAuth2 進行認證。用戶需要通過 `/auth/token` 端點進行認證以接收訪問令牌，該令牌應包含在後續請求中。
 
-```
-POST /auth/token
+``` 
+POST /auth/token 
 ```
 
 還可以通過 `/auth/refresh` 端點獲取刷新令牌。
@@ -57,13 +57,34 @@ API 按以下邏輯模塊組織：
 
 ## 入門指南
 
-1. git clone 此專案
+1. `git clone` 此專案
 2. 配置環境變量
-    - 本專案使用兩個.env分別設定docker-compose/fastapi的環境變數
-3. 透過docker-compose建置
+   - 本專案使用兩個 `.env` 分別設定 `docker-compose` 和 `fastapi` 的環境變數
+3. 透過 `docker-compose` 建置
 4. 在 `/docs` 或 `/redoc` 訪問 API 文檔
 
-## 開發狀態
+## Jenkins 自動化部署學習紀錄
 
-此系統目前正在積極開發中。功能可能會被添加、修改或移除。API 規範可能會發生變化。
+此專案透過 Jenkins 進行自動化部署，以下是學習與實作的紀錄：
 
+### 1. Jenkins Master-Slave 架構
+- 一般情況下，Master-Slave 架構應該分佈在不同主機，但由於此專案規模較小，Master 與 Slave 現在同在一台 VM。
+- 儘管如此，仍然維持 Slave Node 的概念，以確保未來可擴展性。
+
+### 2. 憑證與敏感資料管理
+- 使用 Jenkins `credentials()` 管理敏感資訊，例如 `docker-compose-env`、`fastapi-env`、`gcp-service-account`、`gcp-bucket-name`。
+- `.env` 檔案用於環境變數，而大型檔案則存放於 GCP Cloud Storage Bucket。
+
+### 3. Jenkins 工作區與權限處理
+- 最初 Jenkins 共享同一個工作區，導致權限問題。
+- 由於專案使用 Docker Compose，發現工作區影響較小，因此改用 Jenkins 預設工作區，避免權限錯誤。
+
+### 4. Jenkins Pipeline 設定
+- **Checkout**：從 GitHub 下載程式碼。
+- **Setup Environment**：設置環境變數，確保敏感資料安全。
+- **Build and Deploy**：使用 `docker-compose` 建立並啟動服務。
+- **Health Check**：確保 API 服務正常運行。
+- **Post 部署步驟**：成功或失敗後，清理敏感資料。
+
+---
+此 Jenkins 自動化流程幫助專案順利部署，並展示了 CI/CD 的基本實踐，對於未來的開發與維運具有實際價值。

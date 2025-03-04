@@ -19,6 +19,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   db:
     image: mysql:8.0
@@ -38,6 +43,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   redis:
     image: redis:alpine
@@ -50,6 +60,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
@@ -61,7 +76,32 @@ services:
       - PMA_PASSWORD=${MYSQL_PASSWORD}
     depends_on:
       - db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    volumes:
+      - /var/log:/var/log
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./promtail:/etc/promtail
+      - promtail_data:/tmp
+    command: sh -c "/etc/promtail/setup.sh"
+    environment:
+      - LOKI_HOST=${LOKI_HOST}
+      - LOKI_PORT=${LOKI_PORT}
+    restart: always
+    depends_on:
+      - api
+      - db
+      - redis
+      - phpmyadmin
 
 volumes:
   mysql_data:
   redis_data:
+  promtail_data:
