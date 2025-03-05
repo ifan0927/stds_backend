@@ -8,13 +8,13 @@ positions:
 
 clients:
   - url: http://35.201.132.152:3100/loki/api/v1/push
-    batchwait: 2s                    
-    batchsize: 1048576               # 1MB in bytes
+    batchwait: 2s
+    batchsize: 1048576
     backoff_config:
-      min_period: 500ms              
-      max_period: 15s                
-      max_retries: 10                
-    timeout: 10s                     
+      min_period: 500ms
+      max_period: 15s
+      max_retries: 10
+    timeout: 10s
     tenant_id: "app-server"
 
 scrape_configs:
@@ -38,110 +38,41 @@ scrape_configs:
       - regex:
           expression: '(?P<container_id>(?:[0-9a-f]{64}))\.log$'
           source: filename
-      - regex:
-          expression: '(?P<container_name>[a-zA-Z0-9_-]+)-(?P<container_id>[0-9a-f]{12})'
-          source: filename
       - labels:
           stream:
           container_id:
-          container_name:
-      - regex:
-          expression: '(?P<level>(INFO|WARNING|ERROR|DEBUG|CRITICAL|FATAL))'
-          source: log
-      - labels:
-          level:
 
   - job_name: api_service
     static_configs:
     - targets:
         - localhost
       labels:
-        job: application
+        job: api
         host: app_server
-        service: api
+        service: fastapi
         __path__: /var/lib/docker/containers/*api*/*.log
     pipeline_stages:
       - json:
           expressions:
             log: log
-            stream: stream
             time: time
       - timestamp:
           source: time
-          format: RFC3339
+          format: RFC3339Nano
       - regex:
-          expression: '(?P<level>(INFO|WARNING|ERROR|DEBUG|CRITICAL|FATAL))'
+          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})\s(?P<level>[A-Z]+)?:?\s+(?P<message>.*)'
           source: log
       - labels:
           level:
       - regex:
-          expression: "path[=:]\\s*\"?(?P<path>[^\\s,\"']+)\"?"          
-          source: log
-      - regex:
-          expression: 'method[=:]\\s*"?(?P<method>[A-Z]+)"?'         
-          source: log
-      - regex:
-          expression: 'status[=:]\\s*"?(?P<status>[0-9]{3})"?'       
+          expression: '"(?P<method>GET|POST|PUT|DELETE|PATCH)\s+(?P<path>/[^\s"]*)\s+HTTP/[\d\.]+"\s+(?P<status>\d{3})'
           source: log
       - labels:
-          path:
           method:
+          path:
           status:
-      - regex:                       
-          expression: "error[=:]\\s*\"?(?P<error_msg>[^\"'\\n]+)\"?"   
-          source: log
-      - labels:                      
-          error_msg:                 
-
-  - job_name: mysql
-    static_configs:
-    - targets:
-        - localhost
-      labels:
-        job: database
-        host: app_server
-        service: mysql
-        __path__: /var/lib/docker/containers/*db*/*.log
-    pipeline_stages:
-      - json:
-          expressions:
-            log: log
-            stream: stream
-            time: time
-      - timestamp:
-          source: time
-          format: RFC3339
       - regex:
-          expression: '(?P<log_type>(error|warning|note))'
+          expression: '(?P<error_type>error|exception|traceback)'
           source: log
       - labels:
-          log_type:
-      - regex:                       
-          expression: 'ERROR\\s+(?P<error_code>[0-9]+)'              
-          source: log
-      - labels:                      
-          error_code:                
-
-  - job_name: redis
-    static_configs:
-    - targets:
-        - localhost
-      labels:
-        job: database
-        host: app_server
-        service: redis
-        __path__: /var/lib/docker/containers/*redis*/*.log
-    pipeline_stages:
-      - json:
-          expressions:
-            log: log
-            stream: stream
-            time: time
-      - timestamp:
-          source: time
-          format: RFC3339
-      - regex:                       
-          expression: '(?P<redis_operation>(GET|SET|DEL|HMSET|HGET|EXPIRE))'  
-          source: log
-      - labels:                      
-          redis_operation:
+          error_type:
