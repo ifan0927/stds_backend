@@ -105,7 +105,7 @@ scrape_configs:
       - labels:
           level:
       - regex:
-          expression: 'path[=:]\\s*"?(?P<path>[^\\s,"\']+)"?'        # 修改: 更精確的路徑匹配
+          expression: "path[=:]\\s*\"?(?P<path>[^\\s,\"']+)\"?"          # 修改: 更精確的路徑匹配
           source: log
       - regex:
           expression: 'method[=:]\\s*"?(?P<method>[A-Z]+)"?'         # 修改: 更精確的方法匹配
