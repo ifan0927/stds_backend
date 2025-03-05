@@ -18,7 +18,6 @@ clients:
     tenant_id: "app-server"
 
 scrape_configs:
-  # 監控所有容器的日誌
   - job_name: docker
     static_configs:
     - targets:
@@ -38,81 +37,28 @@ scrape_configs:
           format: RFC3339Nano
       - docker: {}  # 自動提取 Docker 標籤
       
-  # 專門監控 API 服務的日誌
-  - job_name: api_service
-    static_configs:
-    - targets:
-        - localhost
-      labels:
-        job: api
-        service: fastapi
-        __path__: /var/lib/docker/containers/*api-service*/*-json.log  # 使用固定容器名稱
-    pipeline_stages:
-      - json:
-          expressions:
-            stream: stream
-            log: log
-            time: time
-      - timestamp:
-          source: time
-          format: RFC3339Nano
-      - regex:
-          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})\s(?P<level>[A-Z]+)?:?\s+(?P<message>.*)'
-          source: log
-      - labels:
-          level:
-      - regex:
-          expression: '"(?P<method>GET|POST|PUT|DELETE|PATCH)\s+(?P<path>/[^\s"]*)\s+HTTP/[\d\.]+"\s+(?P<status>\d{3})'
-          source: log
-      - labels:
-          method:
-          path:
-          status:
-      - regex:
-          expression: '(?P<error_type>error|exception|traceback)'
-          source: log
-      - labels:
-          error_type:
-          
-  # 專門監控 MySQL 數據庫的日誌
-  - job_name: mysql
-    static_configs:
-    - targets:
-        - localhost
-      labels:
-        job: database
-        service: mysql
-        __path__: /var/lib/docker/containers/*db-service*/*-json.log  # 使用固定容器名稱
-    pipeline_stages:
-      - json:
-          expressions:
-            stream: stream
-            log: log
-            time: time
-      - timestamp:
-          source: time
-          format: RFC3339Nano
-      - regex:
-          expression: '(?P<log_type>(error|warning|note))'
-          source: log
-      - labels:
-          log_type:
-      
-  # 專門監控 Redis 的日誌
-  - job_name: redis
-    static_configs:
-    - targets:
-        - localhost
-      labels:
-        job: database
-        service: redis
-        __path__: /var/lib/docker/containers/*redis-service*/*-json.log  # 使用固定容器名稱
-    pipeline_stages:
-      - json:
-          expressions:
-            stream: stream
-            log: log
-            time: time
-      - timestamp:
-          source: time
-          format: RFC3339Nano
+      # 對於已經收集到的日誌，進一步處理 FastAPI 日誌
+      - match:
+          selector: '{container_name=~".*api.*"}'  # 使用 docker 標籤中提取的容器名稱
+          stages:
+            # 提取 FastAPI 日誌的詳細信息
+            - regex:
+                expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})\s(?P<level>[A-Z]+)?:?\s+(?P<message>.*)'
+                source: log
+            - labels:
+                level:
+            - regex:
+                expression: '"(?P<method>GET|POST|PUT|DELETE|PATCH)\s+(?P<path>/[^\s"]*)\s+HTTP/[\d\.]+"\s+(?P<status>\d{3})'
+                source: log
+            - labels:
+                method:
+                path:
+                status:
+            - regex:
+                expression: '(?P<error_type>error|exception|traceback)'
+                source: log
+            - labels:
+                error_type:
+            # 添加服務類型標籤
+            - labels:
+                service: fastapi
