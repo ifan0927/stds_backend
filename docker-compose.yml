@@ -3,6 +3,7 @@ services:
     build: 
       context: ./api
       dockerfile: Dockerfile
+    container_name: api-service  # 添加固定容器名稱
     ports:
       - "8000:8000"
     volumes:
@@ -27,6 +28,7 @@ services:
 
   db:
     image: mysql:8.0
+    container_name: db-service  # 添加固定容器名稱
     ports:
       - "3306:3306"
     volumes:
@@ -51,6 +53,7 @@ services:
 
   redis:
     image: redis:alpine
+    container_name: redis-service  # 添加固定容器名稱
     ports:
       - "6379:6379"
     volumes:
@@ -68,6 +71,7 @@ services:
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin-service  # 添加固定容器名稱
     ports:
       - "8080:80"
     environment:
@@ -88,8 +92,9 @@ services:
     volumes:
       - /var/log:/var/log
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - ./promtail:/etc/promtail
+      - ./promtail/config.yml:/etc/promtail/config.yml  # 明確指定配置文件路徑
       - promtail_data:/tmp
+    command: -config.file=/etc/promtail/config.yml  # 明確指定配置文件
     environment:
       - LOKI_HOST=${LOKI_HOST}
       - LOKI_PORT=${LOKI_PORT}
