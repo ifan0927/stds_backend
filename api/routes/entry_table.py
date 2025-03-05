@@ -5,11 +5,16 @@ from database import get_db
 from models.entry_table import EntryTable
 from schemas.entry_table import EntryTableCreate, EntryTableUpdate, EntryTable as EntryTableSchema
 from utils.auth import get_current_active_user
+from utils.bot import linebot
 from models.auth import AuthUser
+from dotenv import load_dotenv
 from typing import List
+import os 
 
+load_dotenv()
 router = APIRouter(prefix="/entry_table", tags=["entry_table"])
 tz = timezone(timedelta(hours=8))
+LINE_GROUP_ID = os.getenv("LINE_GROUP_ID")
 
 @router.get("/", response_model=List[EntryTableSchema])
 def get_entries(
@@ -27,6 +32,11 @@ def create_entry(
     db: Session = Depends(get_db),
     current_user: AuthUser = Depends(get_current_active_user)
 ):
+    if entry.type == "system":
+        bot = linebot(LINE_GROUP_ID)
+        bot.add_message('text', '系統更新通知:網頁功能更新')
+        bot.add_message('text', entry.content)  
+        bot.send_line_message()    
     db_entry = EntryTable(**entry.model_dump())
     db_entry.created_by = current_user.name
     db.add(db_entry)

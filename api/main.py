@@ -51,8 +51,7 @@ async def callback(request: Request):
     # 獲取LINE平台傳送的事件
     body = await request.body()
     body_text = body.decode('utf-8')
-    
-    # 獲取簽名（如果有的話）
+
     signature = request.headers.get('X-Line-Signature', '')
     
     try:
@@ -65,7 +64,7 @@ async def callback(request: Request):
                 group_id = event['source']['groupId']
                 print(f"群組ID: {group_id}")
                 
-                # 這裡可以添加將群組ID保存到數據庫的代碼
+
                 
         return {"status": "OK"}
     except Exception as e:
