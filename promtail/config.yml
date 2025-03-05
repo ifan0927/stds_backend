@@ -1,30 +1,21 @@
 server:
   http_listen_port: 9080
   grpc_listen_port: 0
-  # 新增: 日誌級別，方便調試
-  log_level: info                    # 新增
+  log_level: info
 
 positions:
   filename: /tmp/positions.yaml
 
 clients:
   - url: http://35.201.132.152:3100/loki/api/v1/push
-    # 針對輕流量環境的批處理配置
-    batchwait: 2s                    # 修改: 從0.5s增加到2s
-    batchsize: 1MB                   # 修改: 從256KB增加到1MB
+    batchwait: 2s                    
+    batchsize: 1048576               # 1MB in bytes
     backoff_config:
-      min_period: 500ms              # 修改: 從100ms增加到500ms
-      max_period: 15s                # 修改: 從10s增加到15s
-      max_retries: 10                # 修改: 從5增加到10
-    timeout: 10s                     # 修改: 從5s增加到10s
+      min_period: 500ms              
+      max_period: 15s                
+      max_retries: 10                
+    timeout: 10s                     
     tenant_id: "app-server"
-
-# 新增全局性能設置
-limit_config:                        # 新增區塊
-  readline_rate_limit: 20MB          # 新增: 讀取速率限制
-  readline_rate_limit_burst: 40MB    # 新增: 爆發讀取速率限制
-  readline_config:                   # 新增區塊
-    max_line_size: 512KB             # 新增: 最大行大小
 
 scrape_configs:
   - job_name: docker
@@ -35,9 +26,6 @@ scrape_configs:
         job: docker
         host: app_server
         __path__: /var/lib/docker/containers/*/*log
-    # 新增: 檔案讀取配置
-    target_config:                   # 新增區塊
-      sync_period: "10s"             # 新增: 降低同步間隔
     pipeline_stages:
       - json:
           expressions:
@@ -47,13 +35,6 @@ scrape_configs:
       - timestamp:
           source: time
           format: RFC3339Nano
-      # 新增: 檢查日誌格式是否有效
-      - match:                       # 新增區塊
-          selector: '{}'
-          stages:
-            - regex:
-                expression: '.+'
-                source: log
       - regex:
           expression: '(?P<container_id>(?:[0-9a-f]{64}))\.log$'
           source: filename
@@ -79,9 +60,6 @@ scrape_configs:
         host: app_server
         service: api
         __path__: /var/lib/docker/containers/*api*/*.log
-    # 新增: 檔案讀取配置
-    target_config:                   # 新增區塊
-      sync_period: "10s"             # 新增
     pipeline_stages:
       - json:
           expressions:
@@ -91,38 +69,29 @@ scrape_configs:
       - timestamp:
           source: time
           format: RFC3339
-      # 新增: 確保日誌是有效的
-      - match:                       # 新增區塊
-          selector: '{}'
-          stages:
-            - regex:
-                expression: '.+'
-                source: log
-      # 修改: 提高正則表達式的精確性
       - regex:
           expression: '(?P<level>(INFO|WARNING|ERROR|DEBUG|CRITICAL|FATAL))'
           source: log
       - labels:
           level:
       - regex:
-          expression: "path[=:]\\s*\"?(?P<path>[^\\s,\"']+)\"?"          # 修改: 更精確的路徑匹配
+          expression: "path[=:]\\s*\"?(?P<path>[^\\s,\"']+)\"?"          
           source: log
       - regex:
-          expression: 'method[=:]\\s*"?(?P<method>[A-Z]+)"?'         # 修改: 更精確的方法匹配
+          expression: 'method[=:]\\s*"?(?P<method>[A-Z]+)"?'         
           source: log
       - regex:
-          expression: 'status[=:]\\s*"?(?P<status>[0-9]{3})"?'       # 修改: 更精確的狀態碼匹配
+          expression: 'status[=:]\\s*"?(?P<status>[0-9]{3})"?'       
           source: log
       - labels:
           path:
           method:
           status:
-      # 新增: 將詳細錯誤信息保存為標籤
-      - regex:                       # 新增區塊
-          expression: 'error[=:]\\s*"?(?P<error_msg>[^"\'\\n]+)"?'   # 新增
+      - regex:                       
+          expression: "error[=:]\\s*\"?(?P<error_msg>[^\"'\\n]+)\"?"   
           source: log
-      - labels:                      # 新增區塊
-          error_msg:                 # 新增
+      - labels:                      
+          error_msg:                 
 
   - job_name: mysql
     static_configs:
@@ -133,9 +102,6 @@ scrape_configs:
         host: app_server
         service: mysql
         __path__: /var/lib/docker/containers/*db*/*.log
-    # 新增: 檔案讀取配置
-    target_config:                   # 新增區塊
-      sync_period: "10s"             # 新增
     pipeline_stages:
       - json:
           expressions:
@@ -145,18 +111,16 @@ scrape_configs:
       - timestamp:
           source: time
           format: RFC3339
-      # 修改: 改進日誌類型解析
       - regex:
           expression: '(?P<log_type>(error|warning|note))'
           source: log
       - labels:
           log_type:
-      # 新增: 提取MySQL錯誤代碼
-      - regex:                       # 新增區塊
-          expression: 'ERROR\\s+(?P<error_code>[0-9]+)'              # 新增
+      - regex:                       
+          expression: 'ERROR\\s+(?P<error_code>[0-9]+)'              
           source: log
-      - labels:                      # 新增區塊
-          error_code:                # 新增
+      - labels:                      
+          error_code:                
 
   - job_name: redis
     static_configs:
@@ -167,9 +131,6 @@ scrape_configs:
         host: app_server
         service: redis
         __path__: /var/lib/docker/containers/*redis*/*.log
-    # 新增: 檔案讀取配置
-    target_config:                   # 新增區塊
-      sync_period: "10s"             # 新增
     pipeline_stages:
       - json:
           expressions:
@@ -179,9 +140,8 @@ scrape_configs:
       - timestamp:
           source: time
           format: RFC3339
-      # 新增: Redis特定日誌解析
-      - regex:                       # 新增區塊
-          expression: '(?P<redis_operation>(GET|SET|DEL|HMSET|HGET|EXPIRE))'  # 新增
+      - regex:                       
+          expression: '(?P<redis_operation>(GET|SET|DEL|HMSET|HGET|EXPIRE))'  
           source: log
-      - labels:                      # 新增區塊
-          redis_operation:           # 新增
+      - labels:                      
+          redis_operation:
