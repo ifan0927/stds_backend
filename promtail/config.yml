@@ -7,6 +7,15 @@ positions:
 
 clients:
   - url: http://35.201.132.152:3100/loki/api/v1/push
+    # 針對輕流量環境的批處理配置
+    batchwait: 0.5s  # 更短的等待時間，提高實時性
+    batchsize: 256KB  # 較小的批次大小
+    backoff_config:
+      min_period: 100ms
+      max_period: 10s  # 降低最大重試間隔
+      max_retries: 5
+    timeout: 5s
+    tenant_id: "app-server"
 
 scrape_configs:
   - job_name: docker
@@ -17,8 +26,32 @@ scrape_configs:
         job: docker
         host: app_server
         __path__: /var/lib/docker/containers/*/*log
+    pipeline_stages:
+      - json:
+          expressions:
+            stream: stream
+            log: log
+            time: time
+      - timestamp:
+          source: time
+          format: RFC3339Nano
+      - regex:
+          expression: '(?P<container_id>(?:[0-9a-f]{64}))\.log$'
+          source: filename
+      - regex:
+          expression: '(?P<container_name>[a-zA-Z0-9_-]+)-(?P<container_id>[0-9a-f]{12})'
+          source: filename
+      - labels:
+          stream:
+          container_id:
+          container_name:
+      - regex:
+          expression: '(?P<level>(INFO|WARNING|ERROR|DEBUG|CRITICAL|FATAL))'
+          source: log
+      - labels:
+          level:
 
-  - job_name: application
+  - job_name: api_service
     static_configs:
     - targets:
         - localhost
@@ -26,4 +59,74 @@ scrape_configs:
         job: application
         host: app_server
         service: api
-        __path__: /var/log/app/*.log
+        __path__: /var/lib/docker/containers/*api*/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            log: log
+            stream: stream
+            time: time
+      - timestamp:
+          source: time
+          format: RFC3339
+      - regex:
+          expression: '(?P<level>(INFO|WARNING|ERROR|DEBUG|CRITICAL|FATAL))'
+          source: log
+      - labels:
+          level:
+      - regex:
+          expression: 'path[=:]\\s*(?P<path>[^\\s,"\']+)'
+          source: log
+      - regex:
+          expression: 'method[=:]\\s*(?P<method>[A-Z]+)'
+          source: log
+      - regex:
+          expression: 'status[=:]\\s*(?P<status>\\d+)'
+          source: log
+      - labels:
+          path:
+          method:
+          status:
+
+  - job_name: mysql
+    static_configs:
+    - targets:
+        - localhost
+      labels:
+        job: database
+        host: app_server
+        service: mysql
+        __path__: /var/lib/docker/containers/*db*/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            log: log
+            stream: stream
+            time: time
+      - timestamp:
+          source: time
+          format: RFC3339
+      - regex:
+          expression: '(?P<log_type>(error|warning|note))'
+          source: log
+      - labels:
+          log_type:
+
+  - job_name: redis
+    static_configs:
+    - targets:
+        - localhost
+      labels:
+        job: database
+        host: app_server
+        service: redis
+        __path__: /var/lib/docker/containers/*redis*/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            log: log
+            stream: stream
+            time: time
+      - timestamp:
+          source: time
+          format: RFC3339
