@@ -5,7 +5,7 @@ import os
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from routes import estates, auth, rooms, rentals, users, electric_record, file, schedules, accounting, overtime_payment, emails
-from routes import entry_table, line_bot
+from routes import entry_table
 from database import engine
 import models.estate
 import json
@@ -36,7 +36,7 @@ app.include_router(accounting.router)
 app.include_router(overtime_payment.router)
 app.include_router(emails.router)
 app.include_router(entry_table.router)
-app.include_router(line_bot.router)
+
 
 @app.get("/")
 def read_root():
