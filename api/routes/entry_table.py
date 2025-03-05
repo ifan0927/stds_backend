@@ -14,7 +14,7 @@ import os
 load_dotenv()
 router = APIRouter(prefix="/entry_table", tags=["entry_table"])
 tz = timezone(timedelta(hours=8))
-LINE_GROUP_ID = os.getenv("LINE_GROUP_ID_TEST")
+LINE_GROUP_ID = os.getenv("LINE_GROUP_ID")
 
 @router.get("/", response_model=List[EntryTableSchema])
 def get_entries(
@@ -34,7 +34,8 @@ def create_entry(
 ):
     if entry.type == "system":
         bot = linebot(LINE_GROUP_ID)
-        bot.add_message('text', '系統更新通知:網頁功能更新')
+        title_message = f'系統更新通知: { entry.title }'
+        bot.add_message('text', title_message)
         bot.add_message('text', entry.content)  
         bot.send_line_message()    
     db_entry = EntryTable(**entry.model_dump())
