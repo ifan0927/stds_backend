@@ -14,7 +14,7 @@ import os
 load_dotenv()
 router = APIRouter(prefix="/entry_table", tags=["entry_table"])
 tz = timezone(timedelta(hours=8))
-LINE_GROUP_ID = os.getenv("LINE_GROUP_ID_TEST")
+LINE_GROUP_ID = os.getenv("LINE_GROUP_ID")
 
 @router.get("/", response_model=List[EntryTableSchema])
 def get_entries(
