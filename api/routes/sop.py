@@ -47,6 +47,17 @@ def get_sop_article(
         raise HTTPException(status_code=404, detail="Sop_article not found")
     return sop_article
 
+@router.get("/sop_articles/category/{sop_category_id}", response_model=List[SopArticleSchema])
+def get_sop_articles_by_category(
+    sop_category_id : int ,
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(get_db),
+    current_user: AuthUser = Depends(get_current_active_user)
+):
+    articles = db.query(SopArticles).filter(SopArticles.category_id == sop_category_id).offset(skip).limit(limit).all()
+    return articles
+
 @router.get("/sop_articles/{sop_article_id}/files", response_model=List[FileSchema])
 def get_sop_article_files(  
     sop_article_id: int,  
