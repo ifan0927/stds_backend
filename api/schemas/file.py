@@ -24,6 +24,7 @@ class FileUpdate(BaseModel):
     file_info: Optional[str] = None
     download_count: Optional[int] = None
     uploader_id: Optional[int] = None
+    upload_time: Optional[datetime] = None
 
 class File(FileBase):
     id: int

@@ -1,19 +1,32 @@
-# main.py
 from fastapi import FastAPI
 from fastapi import Request
 import os
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from routes import estates, auth, rooms, rentals, users, electric_record, file, schedules, accounting, overtime_payment, emails
-from routes import entry_table
-from database import engine
-import models.estate
+from routes import estates, rooms, rentals, users, electric_record, file, schedules, accounting, overtime_payment, emails
+from routes import entry_table, auth, sop, upload
 import json
 
 
 load_dotenv()
 app = FastAPI(title="Estate Management API")
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+routes_list = [
+    estates,
+    rooms,
+    rentals,
+    users,
+    electric_record,
+    file,
+    schedules,
+    accounting,
+    overtime_payment,
+    emails,
+    entry_table,
+    auth,
+    sop,
+    upload
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,19 +37,8 @@ app.add_middleware(
 )
 
 # 註冊路由
-app.include_router(estates.router)
-app.include_router(auth.router)
-app.include_router(rooms.router)
-app.include_router(rentals.router)
-app.include_router(users.router)
-app.include_router(electric_record.router)
-app.include_router(file.router)
-app.include_router(schedules.router)
-app.include_router(accounting.router)
-app.include_router(overtime_payment.router)
-app.include_router(emails.router)
-app.include_router(entry_table.router)
-
+for route in routes_list:
+    app.include_router(route.router)
 
 @app.get("/")
 def read_root():

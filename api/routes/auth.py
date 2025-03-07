@@ -71,7 +71,7 @@ def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
-    # 验证用户
+
     user = db.query(AuthUser).filter(AuthUser.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(
@@ -86,22 +86,23 @@ def login_for_access_token(
             detail="Inactive user"
         )
     
-    # 更新最后登录时间
+
     user.last_login = datetime.now(tz)
     db.commit()
     
-    # 生成访问令牌
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={
             "sub": user.email,
             "role": user.role,
-            "name": user.name
+            "name": user.name,
+            "id" : user.id 
         }, 
         expires_delta=access_token_expires
     )
     
-    # 生成刷新令牌
+
     refresh_token = create_refresh_token(
         data={
             "sub": user.email,

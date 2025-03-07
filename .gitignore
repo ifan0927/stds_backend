@@ -56,3 +56,5 @@ agent.jar
 *.bak
 *.tmp
 *_backup
+
+credentials.json

@@ -8,7 +8,9 @@ services:
       - "8000:8000"
     volumes:
       - ./api:/app
+      - ./credentials.json:/app/credentials.json
     environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
       - MYSQL_HOST=${MYSQL_HOST}
       - MYSQL_USER=${MYSQL_USER}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
