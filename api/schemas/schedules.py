@@ -5,7 +5,7 @@ from datetime import datetime
 class ScheduleBase(BaseModel):
     estate_id: Optional[int] = None
     room_id: Optional[int] = None
-    event_date: datetime
+    event_date: Optional[datetime] = None
     event_type: Optional[str] = None
     description: Optional[str] = None
     status: Optional[str] = None

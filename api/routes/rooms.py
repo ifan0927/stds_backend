@@ -4,12 +4,53 @@ from typing import List
 from datetime import datetime, timezone, timedelta
 from database import get_db
 from models.room import Room
+from models.rental import Rental
+from models.users import User
 from schemas.room import RoomCreate, RoomUpdate, Room as RoomSchema
+from pydantic import BaseModel
 from utils.auth import get_current_active_user
 from models.auth import AuthUser
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 tz = timezone(timedelta(hours=8))
+
+class RoomWithTenant(BaseModel):
+    room_id: int
+    room_name: str
+    tenant_name: str
+
+    class Config:
+        from_attributes = True
+
+@router.get("/estate/{estate_id}/with-tenants", response_model=List[RoomWithTenant])
+def get_rooms_with_tenants_by_estate(
+    estate_id: int,
+    db: Session = Depends(get_db),
+    current_user: AuthUser = Depends(get_current_active_user)
+):
+    rooms = db.query(Room).filter(Room.estate_id == estate_id, Room.deleted_at == None).all()
+    
+    result = []
+    
+    for room in rooms:
+        active_rental = db.query(Rental).filter(
+            Rental.room_id == room.id, 
+            Rental.status == "active"
+        ).first()
+        
+        if active_rental:
+            tenant = db.query(User).filter(User.id == active_rental.user_id).first()
+            tenant_name = tenant.name if tenant else "未知租客"
+        else:
+            tenant_name = "空房"
+            
+        result.append(RoomWithTenant(
+            room_id=room.id,
+            room_name=room.room_number,
+            tenant_name=tenant_name
+        ))
+    
+    return result
 
 @router.get("/estate/{estate_id}", response_model=List[RoomSchema])
 def get_rooms_by_estate(
