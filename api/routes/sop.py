@@ -4,8 +4,6 @@ from typing import List
 from database import get_db
 from models.sop.sop_articles import SopArticles
 from models.sop.sop_categories import SopCategories
-from models.file import File
-from schemas.file import File as FileSchema
 from schemas.sop.sop_articles import SopArticlesCreate, SopArticlesUpdate, SopArticles as SopArticleSchema
 from schemas.sop.sop_categories import SopCategoriesCreate, SopCategoriesUpdate, SopCategories as SopCategoriesSchema
 from utils.auth import get_current_active_user
@@ -57,25 +55,6 @@ def get_sop_articles_by_category(
 ):
     articles = db.query(SopArticles).filter(SopArticles.category_id == sop_category_id).offset(skip).limit(limit).all()
     return articles
-
-@router.get("/sop_articles/{sop_article_id}/files", response_model=List[FileSchema])
-def get_sop_article_files(  
-    sop_article_id: int,  
-    db: Session = Depends(get_db),
-    current_user: AuthUser = Depends(get_current_active_user)
-):
-    # 檢查SOP文章是否存在
-    sop_article = db.query(SopArticles).filter(SopArticles.id == sop_article_id).first()
-    if sop_article is None:
-        raise HTTPException(status_code=404, detail="SOP article not found")
-    
-    # 獲取與特定SOP文章相關的檔案
-    files = db.query(File).filter(
-        File.category == "sop_article",
-        File.ref_id == sop_article_id 
-    ).all()
-    
-    return files
 
 @router.put("/sop_articles/{sop_article_id}", response_model=SopArticleSchema)
 def update_sop_article(

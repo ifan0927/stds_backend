@@ -11,7 +11,7 @@ from models.auth import AuthUser
 from schemas.auth import TokenData
 
 # 配置常量
-SECRET_KEY = "your-secret-key"  # 在生產環境中應該更改為強安全性的密鑰
+SECRET_KEY = "your-secret-key"  
 ALGORITHM = "HS256"
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 ACCESS_TOKEN_EXPIRE_MINUTES = 30

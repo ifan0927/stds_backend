@@ -108,3 +108,4 @@ def read_accountings_by_rental(
         query = query.filter(func.extract('month', Accounting.date) == month)
     accountings = query.all()
     return accountings
+
