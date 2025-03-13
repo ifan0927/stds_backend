@@ -62,7 +62,7 @@ scheduler.add_job(
 )
 
 load_dotenv()
-app = FastAPI(title="Estate Management API")
+app = FastAPI(title="Estate Management API",redirect_slashes=False)
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 routes_list = [
     estates,
