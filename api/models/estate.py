@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from database import Base
 
 class Estate(Base):
@@ -14,3 +15,5 @@ class Estate(Base):
     facilities = Column(Text)
     utility_config = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    accountings = relationship("Accounting", back_populates="estate")
+    rooms = relationship("Room", back_populates="estate")

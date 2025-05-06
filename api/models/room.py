@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, DECIMAL, ForeignKey
 from sqlalchemy.sql import func 
+from sqlalchemy.orm import relationship
 from database import Base
 
 class Room(Base):
@@ -16,4 +17,7 @@ class Room(Base):
     zone = Column(String(100))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     deleted_at = Column(DateTime(timezone=True), nullable=True)
-    
+
+    estate = relationship("Estate", back_populates="rooms")
+    rentals = relationship("Rental", back_populates="room")
+    electric_records = relationship("ElectricRecord", back_populates="room")

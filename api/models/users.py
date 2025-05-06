@@ -19,4 +19,4 @@ class User(Base):
         for field, value in update_data.items():
             setattr(self, field, value)
         return self
-       
+    

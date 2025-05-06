@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, Text, Date, DECIMAL, ForeignKey, DateTime
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from database import Base
 
 class Rental(Base):
@@ -8,7 +9,7 @@ class Rental(Base):
     id = Column(Integer, primary_key=True, index=True)
     old_id = Column(Integer, nullable=True)
     room_id = Column(Integer, ForeignKey("rooms.id"))
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("tenant.id"))  # 修改為關聯到tenant表
     start_date = Column(Date)
     end_date = Column(Date)
     deposit = Column(DECIMAL(10, 2))
@@ -23,3 +24,7 @@ class Rental(Base):
         for field, value in update_data.items():
             setattr(self, field, value)
         return self
+    
+    accountings = relationship("Accounting", back_populates="rental")
+    room = relationship("Room", back_populates="rentals")
+    user = relationship("User", backref="rentals", foreign_keys=[user_id])  # 修改為明確的外鍵引用
