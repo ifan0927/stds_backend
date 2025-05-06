@@ -4,6 +4,7 @@ services:
       context: ./api
       dockerfile: Dockerfile
     container_name: api-service  # 添加固定容器名稱
+    user: "${UID}:${GID}"
     ports:
       - "8000:8000"
     volumes:
