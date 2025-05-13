@@ -9,6 +9,45 @@ import models
 
 router = APIRouter()
 
+# 根據物業ID獲取所有會計記錄
+@router.get("/estate/{estate_id}", response_model=List[Accounting])
+def get_estate_accounting(
+    estate_id: int,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    # 先獲取該物業的所有房間
+    rooms = db.query(models.Room).filter(models.Room.estate_id == estate_id).all()
+    room_ids = [room.id for room in rooms]
+    
+    # 獲取這些房間的所有租約
+    rentals = db.query(models.Rental).filter(models.Rental.room_id.in_(room_ids)).all()
+    rental_ids = [rental.id for rental in rentals]
+    
+    # 查詢條件
+    query = db.query(models.Accounting).filter(models.Accounting.rental_id.in_(rental_ids))
+    
+    # 如果提供了日期範圍，則進行過濾
+    if start_date:
+        query = query.filter(models.Accounting.date >= start_date)
+    if end_date:
+        query = query.filter(models.Accounting.date <= end_date)
+    
+    # 排序並返回
+    accounting_records = query.order_by(models.Accounting.date.asc()).all()
+    
+    # 為每條記錄添加房間號
+    for record in accounting_records:
+        if record.rental_id:
+            rental = db.query(models.Rental).filter(models.Rental.id == record.rental_id).first()
+            if rental:
+                room = db.query(models.Room).filter(models.Room.id == rental.room_id).first()
+                if room:
+                    record.room_number = room.room_number
+    
+    return accounting_records
+
 # 根據房間ID獲取租金記錄
 @router.get("/rent-payments/room/{room_id}", response_model=List[Accounting])
 def get_room_rent_payments(
@@ -28,6 +67,12 @@ def get_room_rent_payments(
         models.Accounting.accounting_tag.in_(["租金", "押金"])
     ).order_by(models.Accounting.date.desc()).all()
     
+    # 添加房間號
+    room = db.query(models.Room).filter(models.Room.id == room_id).first()
+    if room:
+        for payment in rent_payments:
+            payment.room_number = room.room_number
+    
     return rent_payments
 
 # 根據租約ID獲取租金記錄
@@ -41,6 +86,14 @@ def get_rental_rent_payments(
         models.Accounting.rental_id == rental_id,
         models.Accounting.accounting_tag.in_(["租金", "押金"])
     ).order_by(models.Accounting.date.desc()).all()
+    
+    # 添加房間號
+    rental = db.query(models.Rental).filter(models.Rental.id == rental_id).first()
+    if rental:
+        room = db.query(models.Room).filter(models.Room.id == rental.room_id).first()
+        if room:
+            for payment in rent_payments:
+                payment.room_number = room.room_number
     
     return rent_payments
 
@@ -63,6 +116,12 @@ def get_room_electricity_payments(
         models.Accounting.accounting_tag == "電費"
     ).order_by(models.Accounting.date.desc()).all()
     
+    # 添加房間號
+    room = db.query(models.Room).filter(models.Room.id == room_id).first()
+    if room:
+        for payment in electricity_payments:
+            payment.room_number = room.room_number
+    
     return electricity_payments
 
 # 根據租約ID獲取電費記錄
@@ -76,6 +135,14 @@ def get_rental_electricity_payments(
         models.Accounting.rental_id == rental_id,
         models.Accounting.accounting_tag == "電費"
     ).order_by(models.Accounting.date.desc()).all()
+    
+    # 添加房間號
+    rental = db.query(models.Rental).filter(models.Rental.id == rental_id).first()
+    if rental:
+        room = db.query(models.Room).filter(models.Room.id == rental.room_id).first()
+        if room:
+            for payment in electricity_payments:
+                payment.room_number = room.room_number
     
     return electricity_payments
 

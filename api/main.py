@@ -4,7 +4,7 @@ import os
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from routes import estates, rooms, rentals, users, electric_record, file, schedules, accounting, overtime_payment, emails
-from routes import entry_table, auth, sop, upload, cache_management, schedule_replies
+from routes import entry_table, auth, sop, upload, cache_management, schedule_replies, generate
 import json
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -80,7 +80,8 @@ routes_list = [
     sop,
     upload,
     cache_management,
-    schedule_replies
+    schedule_replies,
+    generate
 ]
 
 app.add_middleware(
