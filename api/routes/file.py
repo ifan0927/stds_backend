@@ -1,9 +1,11 @@
+# file.py - 完整的 API 路由更新
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File as FastAPIFile, Form, BackgroundTasks
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List, Optional
 from database import get_db
 from models.file import Files as File
-from schemas.file import FileCreate, FileUpdate, FileResponse, FileUploadInfo
+from schemas.file import FileCreate, FileUpdate, FileResponse, FileUploadInfo, FileSortUpdateRequest
 from utils.auth import get_current_active_user
 from models.auth import AuthUser
 from datetime import datetime, timezone, timedelta
@@ -48,7 +50,7 @@ def get_files(
     db: Session = Depends(get_db),
     current_user: AuthUser = Depends(get_current_active_user)
 ):
-    """獲取檔案列表，支持過濾條件"""
+    """獲取檔案列表，支持過濾條件，按排序順序返回"""
     query = db.query(File)
     
     # 應用過濾條件
@@ -59,8 +61,8 @@ def get_files(
     if file_type:
         query = query.filter(File.file_type == file_type)
     
-    # 排序和分頁
-    files = query.order_by(File.upload_time.desc()).offset(skip).limit(limit).all()
+    # 排序：首先按 sort_order，然後按上傳時間
+    files = query.order_by(File.sort_order.asc(), File.upload_time.desc()).offset(skip).limit(limit).all()
     
     # 背景刷新即將過期的 URL
     if background_tasks:
@@ -75,6 +77,7 @@ async def upload_file(
     ref_id: Optional[int] = Form(None),
     file_type: str = Form(...),
     file_info: Optional[str] = Form(None),
+    sort_order: Optional[int] = Form(None),  # 新增排序參數
     db: Session = Depends(get_db),
     current_user: AuthUser = Depends(get_current_active_user)
 ):
@@ -83,9 +86,16 @@ async def upload_file(
     # 驗證檔案類型
     validate_file_type(file_type)
     
-    # 在此處可以添加檔案大小、類型等驗證
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
+    
+    # 如果沒有指定排序，自動設置為當前最大值+1
+    if sort_order is None:
+        max_order_result = db.query(func.max(File.sort_order)).filter(
+            File.category == category,
+            File.ref_id == ref_id
+        ).scalar()
+        sort_order = (max_order_result or -1) + 1
     
     # 上傳檔案到 GCP
     upload_result = await storage_service.upload_fastapi_file(
@@ -99,7 +109,6 @@ async def upload_file(
     if not upload_result["success"]:
         raise HTTPException(status_code=500, detail="Failed to upload file to storage")
     
-    # 將 URL 有效期格式化為日期時間
     url_expires_at = datetime.fromisoformat(upload_result["url_expires_at"])
     
     # 構建文件記錄
@@ -117,10 +126,10 @@ async def upload_file(
         file_info=file_info,
         uploader_id=current_user.id,
         upload_time=datetime.now(tz),
-        last_modified=datetime.now(tz)
+        last_modified=datetime.now(tz),
+        sort_order=sort_order  # 新增排序字段
     )
     
-    # 保存到資料庫
     db.add(db_file)
     db.commit()
     db.refresh(db_file)
@@ -232,8 +241,39 @@ def update_file_references(
     for file_id in file_ids:
         db_file = db.query(File).filter(File.id == file_id).first()
         # 安全檢查：確保只能更新自己上傳的檔案或管理員
-        if db_file and (db_file.uploader_id == current_user.id or current_user.role =="admin"):
+        if db_file and (db_file.uploader_id == current_user.id or current_user.role == "admin"):
             db_file.ref_id = ref_id
+            db_file.last_modified = datetime.now(tz)
+            updated_count += 1
+    
+    db.commit()
+    return {"success": True, "updated_count": updated_count}
+
+@router.post("/update-sort-order", response_model=dict)
+def update_file_sort_order(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: AuthUser = Depends(get_current_active_user)
+):
+    """批量更新檔案排序"""
+    file_orders = data.get("file_orders", [])
+    
+    if not file_orders:
+        raise HTTPException(status_code=400, detail="Missing file_orders parameter")
+    
+    updated_count = 0
+    for file_order in file_orders:
+        file_id = file_order.get("file_id")
+        sort_order = file_order.get("sort_order")
+        
+        if file_id is None or sort_order is None:
+            continue
+            
+        db_file = db.query(File).filter(File.id == file_id).first()
+        
+        # 安全檢查：確保只能更新自己上傳的檔案或管理員
+        if db_file and (db_file.uploader_id == current_user.id or current_user.role == "admin"):
+            db_file.sort_order = sort_order
             db_file.last_modified = datetime.now(tz)
             updated_count += 1
     

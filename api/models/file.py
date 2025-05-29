@@ -1,3 +1,4 @@
+# models/file.py - 更新後的模型
 from sqlalchemy import Column, Integer, String, Text, Enum, DateTime, ForeignKey, BigInteger
 from sqlalchemy.sql import func
 from database import Base
@@ -27,6 +28,7 @@ class Files(Base):
     # Additional info
     file_info = Column(Text, nullable=True)  # JSON or other metadata
     download_count = Column(Integer, default=0)
+    sort_order = Column(Integer, default=0, nullable=False)  # 新增排序字段
     
     # User and timestamps
     uploader_id = Column(Integer, ForeignKey("users.id"))
@@ -39,4 +41,4 @@ class Files(Base):
     def model_update(self, update_data):
         for field, value in update_data.items():
             setattr(self, field, value)
-        return
+        return self

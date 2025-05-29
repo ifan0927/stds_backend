@@ -18,7 +18,6 @@ class RentalBase(BaseModel):
     rental_info: Optional[str] = None
     status: Optional[str] = None
     
-    # Method to parse the rental_info JSON string
     def get_rental_info_details(self) -> Optional[RentalInfoDetails]:
         if self.rental_info:
             try:
