@@ -320,3 +320,26 @@ def refresh_access_token(token_data: TokenRefresh, db: Session = Depends(get_db)
         
     except JWTError:
         raise credentials_exception
+    
+    ## 尋找用戶根據role
+    @router.get("/users/role/{role}", response_model=List[AuthUserSchema])
+    def get_users_by_role(
+        role: str,
+        current_user: AuthUser = Depends(get_current_active_user),
+        db: Session = Depends(get_db)
+    ):      
+    # 只有管理員可以查看特定角色的用戶  
+        if current_user.role != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admin can view users by role"
+            )
+        
+        users = db.query(AuthUser).filter(AuthUser.role == role).all()
+        if not users:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No users found with role {role}"
+            )
+        
+        return users
