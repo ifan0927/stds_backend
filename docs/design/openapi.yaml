@@ -1,0 +1,6381 @@
+openapi: 3.0.3
+info:
+  title: STDS 物業管理系統 API
+  version: 1.0.0
+  description: STDS 物業管理系統 RESTful API（Go + PostgreSQL + Cloud Run）
+
+servers:
+  - url: https://api.stds.example.com
+    description: Production
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  # ─────────────────────────────────────────────
+  # 物業（Estate）
+  # ─────────────────────────────────────────────
+
+  /v1/estates:
+    get:
+      summary: 列出物業清單
+      description: |
+        依 JWT 授權範圍回傳可見的物業清單。
+        - 系統管理員可見全部物業
+        - 業主僅能見自己的物業
+        - 專案成員僅能見加入的物業
+      operationId: listEstates
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: 物業清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/EstateSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      summary: 新增物業
+      description: |
+        新增物業並自動建立業主系統帳號（若業主 email 尚無帳號）。
+        業主帳號建立後自動加入「業主」群組。
+        僅系統管理員可執行。
+      operationId: createEstate
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstateCreateRequest'
+      responses:
+        '201':
+          description: 物業建立成功
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 新建物業的資源 URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstateDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /v1/estates/{estateId}:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+
+    get:
+      summary: 取得物業詳情
+      operationId: getEstate
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 物業詳情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstateDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+    put:
+      summary: 更新物業基本資料
+      description: 完整更新物業資料。僅系統管理員可執行。
+      operationId: updateEstate
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstateUpdateRequest'
+      responses:
+        '200':
+          description: 更新後的物業詳情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstateDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+
+
+    delete:
+      summary: 刪除物業
+      description: 刪除物業。僅系統管理員可執行。
+      operationId: deleteEstate
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 刪除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+        '409':
+          $ref: '#/components/responses/CannotDeleteHasRoomsOrRents'
+
+  # ─────────────────────────────────────────────
+  # 公共設施（Facilities）
+  # ─────────────────────────────────────────────
+
+  /v1/estates/{estateId}/facilities:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+
+    get:
+      summary: 列出物業公共設施清單
+      description: |
+        回傳該物業的公共設施名稱清單，以及每個設施的備忘錄內容。
+        設施清單來源為物業主檔的 facilities 欄位。
+      operationId: listFacilities
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 公共設施清單
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  facilities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FacilityItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+    put:
+      summary: 更新公共設施備忘錄
+      description: |
+        更新指定設施的備忘錄內容（HTML rich text）。
+        設施名稱需存在於物業主檔的 facilities 清單中。
+        圖片附件管理待檔案模組設計後補入。
+      operationId: updateFacilityMemo
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FacilityMemoUpdateRequest'
+      responses:
+        '200':
+          description: 更新後的設施清單
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  facilities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FacilityItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+  # ─────────────────────────────────────────────
+  # 物業成員（Members）
+  # ─────────────────────────────────────────────
+
+  /v1/estates/{estateId}/members:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+
+    get:
+      summary: 列出物業成員
+      description: 列出已加入該物業的所有成員及其設定（職稱、管理權限、行事曆顏色）。
+      operationId: listEstateMembers
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成員清單
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EstateMember'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+    put:
+      summary: 更新物業成員清單
+      description: |
+        以完整清單取代目前的物業成員分配。
+        提交 userId 陣列，系統比對差異後新增/移出成員。
+        僅具管理員權限（memberLevel=admin）的成員或系統管理員可執行。
+      operationId: updateEstateMembers
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstateMemberListUpdateRequest'
+      responses:
+        '200':
+          description: 更新後的成員清單
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EstateMember'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+  /v1/estates/{estateId}/members/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/UserIdParam'
+
+    patch:
+      summary: 更新單一成員設定
+      description: |
+        更新物業成員的職稱、所屬單位、管理權限、行事曆顏色。
+        僅具管理員權限（memberLevel=admin）的成員或系統管理員可執行。
+      operationId: updateEstateMember
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstateMemberUpdateRequest'
+      responses:
+        '200':
+          description: 更新後的成員資料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstateMember'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+
+  # ─────────────────────────────────────────────
+  # 房間（Rooms）
+  # ─────────────────────────────────────────────
+
+  /v1/estates/{estateId}/rooms:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+
+    get:
+      summary: 列出房間清單
+      description: |
+        列出物業下所有房間，可依 zone（棟別）過濾。
+        回傳房間基本資料及現役租期摘要（若有）。
+      operationId: listRooms
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: zone
+          in: query
+          description: 依棟別/區域過濾（對應 estate_zone 設定值）
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: 房間清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/RoomSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+    post:
+      summary: 新增房間
+      operationId: createRoom
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomCreateRequest'
+      responses:
+        '201':
+          description: 房間建立成功
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+  /v1/estates/{estateId}/rooms/sort:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+
+    put:
+      summary: 更新房間排序
+      description: |
+        拖曳排序後提交完整的房間排序清單。
+        提交所有 roomId 及其對應的新 sortOrder。
+      operationId: updateRoomSort
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomSortUpdateRequest'
+      responses:
+        '200':
+          description: 排序更新成功，回傳更新後的排序清單
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        roomId:
+                          type: integer
+                        sortOrder:
+                          type: integer
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+  /v1/estates/{estateId}/rooms/{roomId}:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RoomIdParam'
+
+    get:
+      summary: 取得房間詳情
+      operationId: getRoom
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 房間詳情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/RoomNotFound'
+
+    put:
+      summary: 更新房間
+      operationId: updateRoom
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomUpdateRequest'
+      responses:
+        '200':
+          description: 更新後的房間詳情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RoomNotFound'
+
+    delete:
+      summary: 刪除房間
+      description: |
+        刪除房間，連帶刪除所有附件（Cloud Storage 物件及資料庫記錄）。
+        若該房間有現役租約（rentEnable=true），刪除被擋。
+      operationId: deleteRoom
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 刪除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RoomNotFound'
+        '409':
+          description: 房間有現役租約，無法刪除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ROOM_ALREADY_RENTED
+                message: 該房間目前有現役租約，請先完成退租後再刪除
+
+  /v1/estates/{estateId}/rooms/{roomId}/actions/copy:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RoomIdParam'
+
+    post:
+      summary: 複製房間
+      description: |
+        複製房間基本資料（設備清單、定價、備註、棟別）至新房間。
+        新房號規則：取原房號首字元 + (原末尾數字 + 1)，例如 A101 → A102。
+        排序設為原排序 + 1。
+        附件不複製（待檔案模組確認）。
+      operationId: copyRoom
+      tags: [Estate]
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: 複製成功，回傳新房間資料
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RoomNotFound'
+
+  # ─────────────────────────────────────────────
+  # 租賃（Rents）
+  # ─────────────────────────────────────────────
+
+  /v1/estates/{estateId}/rents:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+
+    get:
+      summary: 列出物業租期清單
+      description: |
+        列出物業下所有租期。
+        - `status=active`（預設）：現役租約（estate_rent_enable=1）
+        - `status=archived`：已封存/退租租約（estate_rent_enable=0）
+        - `roomId` 可進一步過濾特定房間的租約
+        回傳含房間資訊、主房客姓名、剩餘天數摘要。
+      operationId: listRents
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: 租約狀態（active=現役，archived=已封存）
+          schema:
+            type: string
+            enum: [active, archived]
+            default: active
+        - name: roomId
+          in: query
+          description: 依房間 ID 過濾
+          schema:
+            type: integer
+            minimum: 1
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: 租期清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/RentSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+    post:
+      summary: 新增租期
+      description: |
+        建立新租約，並指定繳費方式、押金、起始電錶度數、提前入住日等。
+        同一房間不得同時存在兩筆現役租約（estate_rent_enable=1）。
+      operationId: createRent
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RentCreateRequest'
+      responses:
+        '201':
+          description: 租約建立成功
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 新建租約的資源 URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RentDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+        '409':
+          description: 該房間已有現役租約
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ROOM_ALREADY_RENTED
+                message: 該房間目前已有現役租約，請先完成退租後再建立新租約
+
+  /v1/estates/{estateId}/rents/payment-reminders:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+
+    get:
+      summary: 取得物業繳費到期提醒清單
+      description: |
+        依各現役租約的繳費方式計算下次應繳日，
+        回傳即將到期或已逾期的繳費提醒清單。
+      operationId: listPaymentReminders
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 繳費到期提醒清單
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PaymentReminder'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+  /v1/estates/{estateId}/rents/{rentId}:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RentIdParam'
+
+    get:
+      summary: 取得租期詳情
+      operationId: getRent
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 租期詳情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RentDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/RentNotFound'
+
+    put:
+      summary: 更新租期
+      description: |
+        完整更新租約資料。
+        已退租（status=archived）的租約不可修改，回傳 409 RENT_ALREADY_TERMINATED。
+      operationId: updateRent
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RentUpdateRequest'
+      responses:
+        '200':
+          description: 更新後的租期詳情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RentDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RentNotFound'
+        '409':
+          $ref: '#/components/responses/RentAlreadyTerminated'
+
+    delete:
+      summary: 刪除租期
+      description: |
+        刪除租期，連帶刪除所有關聯房客記錄及帳務記錄。
+        此操作不可逆，請謹慎使用。
+      operationId: deleteRent
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 刪除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RentNotFound'
+        '409':
+          $ref: '#/components/responses/CannotDeleteHasAccounting'
+
+  /v1/estates/{estateId}/rents/{rentId}/payment-schedule:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RentIdParam'
+
+    get:
+      summary: 取得租金應繳時程
+      description: |
+        依租約的繳費方式（年繳/半年/季繳/月繳）與起租日，
+        計算完整的應繳日期陣列，並標記每個期次的已繳/未繳狀態。
+      operationId: getRentPaymentSchedule
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 應繳時程清單
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PaymentScheduleItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/RentNotFound'
+
+  /v1/estates/{estateId}/rents/{rentId}/payment-notice:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RentIdParam'
+
+    get:
+      summary: 下載租金繳費通知單（PDF）
+      description: |
+        產生每筆未繳費期次的租金繳費通知單（PDF 格式），
+        回傳 302 redirect 至 Cloud Storage 簽署 URL。
+        若租約已退租仍可下載歷史通知單。
+      operationId: downloadPaymentNotice
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      responses:
+        '302':
+          description: Redirect 至 PDF 檔案的簽署 URL
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Cloud Storage 簽署 URL（有效期限 15 分鐘）
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/RentNotFound'
+
+  /v1/estates/{estateId}/rents/{rentId}/checkout-summary:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RentIdParam'
+
+    get:
+      summary: 下載退租結算書（Word）
+      description: |
+        產生退租結算書（Word docx 格式），
+        回傳 302 redirect 至 Cloud Storage 簽署 URL。
+        租約需已完成退租（status=archived）才可下載。
+      operationId: downloadCheckoutSummary
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      responses:
+        '302':
+          description: Redirect 至 Word 檔案的簽署 URL
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Cloud Storage 簽署 URL（有效期限 15 分鐘）
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/RentNotFound'
+        '409':
+          description: 租約尚未退租，無法產生結算書
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: RENT_NOT_TERMINATED
+                message: 租約尚未完成退租，無法產生退租結算書
+
+  /v1/estates/{estateId}/rents/{rentId}/actions/terminate-preview:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RentIdParam'
+
+    post:
+      summary: 退租預覽（step 1）
+      description: |
+        計算退租所需的電費差值、應退押金、毀損費、清潔費等，
+        回傳結算預覽資料供確認，不寫入任何資料庫記錄。
+        需提供退租日期、退租時電錶度數、原因及額外費用。
+      operationId: terminateRentPreview
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TerminateRentRequest'
+      responses:
+        '200':
+          description: 退租結算預覽
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TerminateRentPreview'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RentNotFound'
+        '409':
+          $ref: '#/components/responses/RentAlreadyTerminated'
+
+  /v1/estates/{estateId}/rents/{rentId}/actions/terminate:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RentIdParam'
+
+    post:
+      summary: 確認退租（step 2）
+      description: |
+        確認退租，寫入帳務記錄（電費、退押金、毀損費、清潔費等），
+        並將租約狀態設為 archived（estate_rent_enable=0）。
+        提交資料需與 terminate-preview 計算結果一致（server 端重新驗算）。
+      operationId: terminateRent
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TerminateRentRequest'
+      responses:
+        '200':
+          description: 退租成功，回傳更新後的租期詳情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RentDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RentNotFound'
+        '409':
+          $ref: '#/components/responses/RentAlreadyTerminated'
+
+  /v1/estates/{estateId}/rents/{rentId}/actions/reactivate:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RentIdParam'
+
+    post:
+      summary: 取消封存（重新啟用租約）
+      description: |
+        將已封存的租約（status=archived）重新設為現役（status=active）。
+        若該房間目前已有其他現役租約，操作被擋。
+      operationId: reactivateRent
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 重新啟用成功，回傳更新後的租期詳情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RentDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RentNotFound'
+        '409':
+          description: 租約已是現役狀態，或該房間已有其他現役租約
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                already_active:
+                  value:
+                    code: RENT_ALREADY_ACTIVE
+                    message: 此租約已是現役狀態，無需重新啟用
+                room_already_rented:
+                  value:
+                    code: ROOM_ALREADY_RENTED
+                    message: 該房間目前已有現役租約，無法重新啟用此租約
+
+  # ─────────────────────────────────────────────
+  # 房客（Tenants）
+  # ─────────────────────────────────────────────
+
+  /v1/estates/{estateId}/rents/{rentId}/tenants:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RentIdParam'
+
+    get:
+      summary: 列出租期房客清單
+      operationId: listRentTenants
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 房客清單
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Tenant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/RentNotFound'
+
+    post:
+      summary: 將現有房客關聯到租期
+      description: |
+        將已存在於系統中的房客（tenantId）關聯至指定租期。
+        房客主檔需先透過 POST /v1/tenants 建立。
+      operationId: linkTenantToRent
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantLinkRequest'
+      responses:
+        '201':
+          description: 關聯建立成功，回傳房客資料
+          headers:
+            Location:
+              schema:
+                type: string
+              description: /v1/estates/{estateId}/rents/{rentId}/tenants/{tenantId}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 租約或房客不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                rent_not_found:
+                  value:
+                    code: RENT_NOT_FOUND
+                    message: 找不到指定的租約
+                tenant_not_found:
+                  value:
+                    code: TENANT_NOT_FOUND
+                    message: 找不到指定的房客
+        '409':
+          description: 房客已關聯至此租期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: TENANT_ALREADY_LINKED
+                message: 此房客已關聯至此租約
+
+  /v1/estates/{estateId}/rents/{rentId}/tenants/{tenantId}:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RentIdParam'
+      - $ref: '#/components/parameters/TenantIdParam'
+
+    get:
+      summary: 取得此租期下特定房客詳情
+      operationId: getRentTenant
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 房客詳情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/TenantNotFound'
+
+    put:
+      summary: 更新房客資料（等同 PUT /v1/tenants/{tenantId}）
+      description: |
+        更新房客主檔資料。操作效果與 PUT /v1/tenants/{tenantId} 相同。
+        在租期情境下提供此端點以方便直接從租期詳情頁面更新房客資料。
+      operationId: updateRentTenant
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantUpdateRequest'
+      responses:
+        '200':
+          description: 更新後的房客資料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/TenantNotFound'
+
+    delete:
+      summary: 從租期移除房客（解除關聯）
+      description: |
+        解除房客與租期的關聯（刪除 rent_tenant_link 記錄）。
+        房客主檔不會被刪除，可透過 DELETE /v1/tenants/{tenantId} 單獨刪除。
+      operationId: unlinkTenantFromRent
+      tags: [Rent]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 關聯解除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/TenantNotFound'
+
+  # ─────────────────────────────────────────────
+  # 房客（Tenants）- 全域 CRUD
+  # ─────────────────────────────────────────────
+
+  /v1/tenants:
+    get:
+      summary: 列出房客清單
+      description: |
+        全域房客清單。可依姓名或身份證號搜尋。
+        Tenant 為跨 estate 的獨立實體，不隸屬於特定物業。
+      operationId: listTenants_global
+      tags: [Tenant]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: name
+          in: query
+          description: 依姓名模糊搜尋
+          schema:
+            type: string
+        - name: nationalId
+          in: query
+          description: 依身份證號精確搜尋
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: 房客清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Tenant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      summary: 新增房客
+      description: |
+        建立全域房客主檔。建立後可透過
+        POST /v1/estates/{estateId}/rents/{rentId}/tenants 關聯至租約。
+      operationId: createTenant_global
+      tags: [Tenant]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantCreateRequest'
+      responses:
+        '201':
+          description: 房客建立成功
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 新建房客的資源 URL（/v1/tenants/{tenantId}）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /v1/tenants/{tenantId}:
+    parameters:
+      - $ref: '#/components/parameters/TenantIdParam'
+
+    get:
+      summary: 取得房客詳情
+      operationId: getTenant_global
+      tags: [Tenant]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 房客詳情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/TenantNotFound'
+
+    put:
+      summary: 更新房客資料
+      description: 完整更新房客主檔資料。此操作會影響所有關聯此房客的租約。
+      operationId: updateTenant_global
+      tags: [Tenant]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantUpdateRequest'
+      responses:
+        '200':
+          description: 更新後的房客資料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/TenantNotFound'
+
+    delete:
+      summary: 刪除房客
+      description: |
+        刪除房客主檔。若該房客尚有關聯租約（rent_tenant_links），刪除被擋。
+        請先移除所有租約關聯後再執行刪除。
+      operationId: deleteTenant_global
+      tags: [Tenant]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 刪除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/TenantNotFound'
+        '409':
+          description: 房客尚有關聯租約，無法刪除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: TENANT_HAS_ACTIVE_RENTS
+                message: 此房客尚有關聯租約，請先移除租約關聯後再刪除
+
+  # ─────────────────────────────────────────────
+  # 使用者（Users）- 成員候選清單
+  # ─────────────────────────────────────────────
+
+  /v1/users/available-members:
+    get:
+      summary: 列出可加入物業的成員候選清單
+      description: |
+        依系統設定的可選群組（mem_group）列出所有可被分配至物業的使用者。
+        用於物業成員分配介面的候選人清單。
+      operationId: listAvailableMembers
+      tags: [User]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成員候選清單
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ─────────────────────────────────────────────
+  # 電費（Estate Electric）
+  # ─────────────────────────────────────────────
+
+  /v1/estates/{estateId}/electric-readings:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+
+    get:
+      summary: 查詢物業電錶度數
+      description: |
+        查詢物業內所有房間的電錶度數記錄。
+        - 若提供 year + month，回傳指定年月範圍
+        - 若未提供，預設回傳以當月為基準向前共 7 個月的資料
+        - 回應結構以房間為第一維、年月為第二維，方便 client 建立電錶格
+      operationId: listElectricReadings
+      tags: [Electric]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: year
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 2000
+            maximum: 9999
+          description: 查詢中心年份（與 month 一起使用）
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+          description: 查詢中心月份（與 year 一起使用）
+        - name: rangeMonths
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 24
+            default: 7
+          description: 以中心年月為基準，向前顯示的月份數量（預設 7）
+      responses:
+        '200':
+          description: 電錶度數查詢結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ElectricReadingListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+    patch:
+      summary: 批次 upsert 電錶度數
+      description: |
+        批次新增或更新電錶度數記錄。
+        - 以 [roomId, year, month] 為唯一鍵執行 upsert：存在則更新，不存在則建立
+        - 僅提交有數值的格子，空白格子不處理（不清零）
+        - 提交的 roomId 必須屬於 estateId
+      operationId: upsertElectricReadings
+      tags: [Electric]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ElectricReadingBatchUpsertRequest'
+      responses:
+        '200':
+          description: upsert 完成，回傳所有被更新的記錄
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ElectricReadingItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+  /v1/estates/{estateId}/electric-report:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+
+    get:
+      summary: 下載電費計算報表（Word）
+      description: |
+        產生指定年月的電費計算 Word 報表，回傳 302 redirect 至 Cloud Storage 簽署 URL。
+        報表內容：房號、房客姓名、現期度數、前期度數、使用度數、單價、總電費。
+      operationId: downloadElectricReport
+      tags: [Electric]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 2000
+            maximum: 9999
+          description: 報表年份
+        - name: month
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+          description: 報表月份
+      responses:
+        '302':
+          description: Redirect 至 Cloud Storage 簽署 URL（Word 檔案）
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Cloud Storage 簽署 URL
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+  /v1/estates/{estateId}/electric-receipt:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+
+    get:
+      summary: 下載電費收據（PDF）
+      description: |
+        產生指定年月的電費收據 PDF，回傳 302 redirect 至 Cloud Storage 簽署 URL。
+        每個房間產生一張收據（含存根聯與顧客留存聯）。
+      operationId: downloadElectricReceipt
+      tags: [Electric]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 2000
+            maximum: 9999
+          description: 收據年份
+        - name: month
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+          description: 收據月份
+      responses:
+        '302':
+          description: Redirect 至 Cloud Storage 簽署 URL（PDF 檔案）
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Cloud Storage 簽署 URL
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+  # ─────────────────────────────────────────────
+  # 日誌/排程（Schedule）
+  # ─────────────────────────────────────────────
+
+  /v1/estates/{estateId}/schedules:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+
+    get:
+      summary: 列出物業日誌清單
+      description: |
+        列出指定物業的日誌記錄，支援多維過濾與分頁。
+        回應中包含 monthGroups（月份導覽分組），供 client 渲染月份側欄。
+        若未指定 roomId 過濾，則顯示物業整體（roomId=0）及所有房間的日誌。
+      operationId: listSchedules
+      tags: [Schedule]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: yearMonth
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}$'
+          description: 年月過濾，格式 YYYY-MM（如 2026-03）
+        - name: roomId
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+          description: 房間 ID 過濾（0=物業整體）
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 日誌分類過濾（如「例行」「叫修」等，與系統設定的分類值一致）
+        - name: keyword
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 關鍵字搜尋（比對日誌內容）
+      responses:
+        '200':
+          description: 日誌清單
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+    post:
+      summary: 新增日誌
+      description: |
+        建立一筆新的日誌記錄。
+        新增成功後自動建立一筆關聯帳務記錄（tag='日誌'），帳務金額預設為 0。
+        新增後非同步發送 Email 通知給物業全體成員。
+      operationId: createSchedule
+      tags: [Schedule]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleCreateRequest'
+      responses:
+        '201':
+          description: 日誌建立成功
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 新建日誌的資源 URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Schedule'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+  /v1/estates/{estateId}/schedules/{scheduleId}:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/ScheduleIdParam'
+
+    get:
+      summary: 取得日誌詳情
+      description: |
+        取得指定日誌的完整資訊，包含回應清單（replies）與帳務記錄（accountings）。
+      operationId: getSchedule
+      tags: [Schedule]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 日誌詳情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/ScheduleNotFound'
+
+    put:
+      summary: 更新日誌
+      description: |
+        更新指定日誌的全部欄位（完整替換）。
+        同時更新關聯帳務記錄的 title 與 date 欄位（同步日誌內容與日期）。
+        更新後非同步發送 Email 通知給物業全體成員。
+      operationId: updateSchedule
+      tags: [Schedule]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleUpdateRequest'
+      responses:
+        '200':
+          description: 日誌更新成功，回傳完整更新後的日誌
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Schedule'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/ScheduleNotFound'
+
+    delete:
+      summary: 刪除日誌
+      description: |
+        刪除指定日誌。
+        刪除流程：先嘗試刪除關聯帳務記錄，若帳務刪除失敗則整體取消，日誌保留。
+        帳務刪除成功後，再刪除日誌本體（附件由檔案模組連帶處理）。
+      operationId: deleteSchedule
+      tags: [Schedule]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 日誌刪除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/ScheduleNotFound'
+        '409':
+          $ref: '#/components/responses/CannotDeleteHasAccounting'
+
+  /v1/estates/{estateId}/schedules/{scheduleId}/replies:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/ScheduleIdParam'
+
+    post:
+      summary: 新增日誌回應
+      description: |
+        在指定日誌下新增一筆回應。
+        回應日期由系統寫入當下時間（不允許 client 自訂）。
+        新增後非同步發送 Email 通知給物業全體成員。
+      operationId: createReply
+      tags: [Schedule]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplyCreateRequest'
+      responses:
+        '201':
+          description: 回應建立成功
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 新建回應的資源 URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reply'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/ScheduleNotFound'
+
+  # ─────────────────────────────────────────────
+  # 帳務管理（Accounting）
+  # ─────────────────────────────────────────────
+
+  /v1/estates/{estateId}/accounting-titles:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+
+    get:
+      summary: 取得適用的收支科目清單
+      description: |
+        回傳此物業適用的會計科目清單（46xx 費用類、66xx 收益類）。
+        結果依科目類別分組後回傳，供新增/編輯帳務記錄時選用。
+      operationId: listAccountingTitles
+      tags: [Accounting]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 科目清單
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountingTitleListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+  /v1/estates/{estateId}/accountings:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+
+    get:
+      summary: 查詢物業帳務記錄清單
+      description: |
+        查詢指定物業的帳務記錄，支援多維條件過濾與分頁。
+        - 可依關聯資源（linkedResourceType + linkedResourceId）過濾特定業務物件的帳務
+        - 可依 tag（如「租金」「押金」「電費」「日誌」）過濾
+        - 可依 code（辨識碼）精確查找特定期次
+        - 可依日期區間過濾
+      operationId: listAccountings
+      tags: [Accounting]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: linkedResourceType
+          in: query
+          description: 關聯資源類型（如 rent、schedule）；需與 linkedResourceId 同時提供
+          schema:
+            type: string
+            enum: [rent, schedule]
+        - name: linkedResourceId
+          in: query
+          description: 關聯資源 ID；需與 linkedResourceType 同時提供
+          schema:
+            type: integer
+            minimum: 1
+        - name: tag
+          in: query
+          description: 帳務標記過濾（如「租金」「押金」「電費」「日誌」「退租其他費用」）
+          schema:
+            type: string
+        - name: code
+          in: query
+          description: 辨識碼精確過濾（如 "{rentId}-{日期}"，用於判斷特定期次是否已繳）
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          description: 帳務日期起始（YYYY-MM-DD，含）
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          description: 帳務日期結束（YYYY-MM-DD，含）
+          schema:
+            type: string
+            format: date
+        - name: titleId
+          in: query
+          description: 科目編號過濾
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 帳務記錄清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Accounting'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+    post:
+      summary: 新增帳務記錄
+      description: |
+        新增一筆帳務記錄（收入或支出），並關聯至指定的業務物件。
+        - income 與 expenditure 不可同時為非零值
+        - 若 paymentMethod 為「現金」，cashAccountId 欄位預留供未來零用金功能使用（目前不觸發副作用）
+      operationId: createAccounting
+      tags: [Accounting]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountingCreateRequest'
+      responses:
+        '201':
+          description: 帳務記錄建立成功
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 新建帳務記錄的資源 URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Accounting'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+  /v1/estates/{estateId}/accountings/overview:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+
+    get:
+      summary: 取得物業帳務總覽
+      description: |
+        回傳物業帳務的彙總統計，包含：
+        - 上月結餘（截至 periodFrom 前一天的累計結餘）
+        - 本期收入合計
+        - 本期支出合計
+        - 本期結餘
+        - 累計結餘（截至 periodTo 的累計結餘）
+        - 各科目加總明細
+
+        預設期間為當月（月初至今）。可傳入 titleId 查詢特定科目的加總。
+      operationId: getAccountingOverview
+      tags: [Accounting]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: periodFrom
+          in: query
+          description: 本期起始日（YYYY-MM-DD，預設當月 1 日）
+          schema:
+            type: string
+            format: date
+        - name: periodTo
+          in: query
+          description: 本期結束日（YYYY-MM-DD，預設今日）
+          schema:
+            type: string
+            format: date
+        - name: titleId
+          in: query
+          description: 指定單一科目的加總查詢（不指定則回傳所有科目彙總）
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 帳務總覽
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountingOverview'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+  /v1/estates/{estateId}/accountings/{accountingId}:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/AccountingIdParam'
+
+    get:
+      summary: 取得單筆帳務詳情
+      operationId: getAccounting
+      tags: [Accounting]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 帳務詳情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Accounting'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AccountingNotFound'
+
+    put:
+      summary: 更新帳務記錄
+      description: |
+        完整更新指定帳務記錄。
+        - income 與 expenditure 不可同時為非零值
+        - linkedResourceType 與 linkedResourceId 更新後，舊的關聯關係不再保留
+      operationId: updateAccounting
+      tags: [Accounting]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountingUpdateRequest'
+      responses:
+        '200':
+          description: 帳務記錄更新成功，回傳完整更新後的記錄
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Accounting'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AccountingNotFound'
+
+    delete:
+      summary: 刪除帳務記錄
+      description: |
+        刪除指定的帳務記錄。
+        注意：若此帳務記錄與其他業務物件（如租約、日誌）有強依賴關係，
+        應由呼叫端業務邏輯確認後再執行刪除（如退租流程中由服務層批次刪除）。
+      operationId: deleteAccounting
+      tags: [Accounting]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 帳務記錄刪除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AccountingNotFound'
+
+  /v1/estates/{estateId}/schedules/{scheduleId}/replies/{replyId}:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/ScheduleIdParam'
+      - $ref: '#/components/parameters/ReplyIdParam'
+
+    put:
+      summary: 更新日誌回應
+      description: |
+        更新指定回應的內容（完整替換）。
+        回應日期由系統更新為當下時間（不允許 client 自訂，與舊系統 update_estate_reply 一致）。
+      operationId: updateReply
+      tags: [Schedule]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplyUpdateRequest'
+      responses:
+        '200':
+          description: 回應更新成功，回傳完整更新後的回應
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reply'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/ScheduleNotFound'
+
+    delete:
+      summary: 刪除日誌回應
+      description: |
+        刪除指定回應，同時連帶刪除該回應的所有附件（由檔案模組處理）。
+      operationId: deleteReply
+      tags: [Schedule]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 回應刪除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/ScheduleNotFound'
+
+  # ─────────────────────────────────────────────
+  # 認證（Auth）
+  # ─────────────────────────────────────────────
+
+  /v1/auth/login:
+    post:
+      summary: 使用者登入
+      description: |
+        以帳號（username）與密碼（password）換取 JWT token。
+        token 有效期間由系統設定，過期後需重新登入。
+        密碼在服務端以 bcrypt 驗證，不使用 MD5。
+      operationId: login
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登入成功，回傳 JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: 帳號或密碼錯誤
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: INVALID_CREDENTIALS
+                message: 帳號或密碼錯誤
+
+  /v1/auth/logout:
+    post:
+      summary: 使用者登出
+      description: |
+        登出目前的 JWT 會話。
+        由於 JWT 為 stateless，server 端不維護 session；
+        建議 client 端清除本地儲存的 token。
+        若有實作 token blacklist，此端點可用於加入黑名單。
+      operationId: logout
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 登出成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/users/me/password:
+    patch:
+      summary: 使用者自行修改密碼
+      description: |
+        已登入的使用者自行修改自己的密碼。
+        需提供現有密碼（currentPassword）做驗證，通過後才以 bcrypt 更新為新密碼。
+        密碼永不在 response 出現。
+        與 PUT /v1/users/{userId} 不同：此端點任何已登入使用者均可呼叫（僅能修改自己的密碼），
+        不需要系統管理員角色；PUT /v1/users/{userId} 仍維持僅 admin 可執行。
+      operationId: changeMyPassword
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '204':
+          description: 密碼修改成功
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/CurrentPasswordIncorrect'
+
+  # ─────────────────────────────────────────────
+  # 使用者管理（Users）
+  # ─────────────────────────────────────────────
+
+  /v1/users:
+    get:
+      summary: 列出使用者清單
+      description: |
+        列出所有系統使用者，支援多條件搜尋與群組過濾。
+        僅系統管理員可執行。
+        可搜尋欄位：name（顯示名稱）、username（登入帳號）、email、occupation（職業）、bio（簡介）。
+      operationId: listUsers
+      tags: [User]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: groupId
+          in: query
+          description: 依群組 ID 過濾（只回傳屬於指定群組的使用者）
+          schema:
+            type: integer
+            minimum: 1
+        - name: name
+          in: query
+          description: 依顯示名稱模糊搜尋
+          schema:
+            type: string
+        - name: username
+          in: query
+          description: 依登入帳號模糊搜尋
+          schema:
+            type: string
+        - name: email
+          in: query
+          description: 依 Email 模糊搜尋
+          schema:
+            type: string
+        - name: occupation
+          in: query
+          description: 依職業模糊搜尋
+          schema:
+            type: string
+        - name: bio
+          in: query
+          description: 依簡介模糊搜尋
+          schema:
+            type: string
+        - name: isEnabled
+          in: query
+          description: 依帳號啟用狀態過濾（true=啟用，false=停用）
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: 使用者清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/UserDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      summary: 新增使用者
+      description: |
+        新增單一使用者帳號。
+        僅系統管理員可執行。
+        密碼以 bcrypt 儲存，永不在 response body 出現。
+        若帳號（username）已存在則回傳 409 USERNAME_ALREADY_EXISTS。
+      operationId: createUser
+      tags: [User]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+      responses:
+        '201':
+          description: 使用者建立成功
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 新建使用者的資源 URL（/v1/users/{userId}）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/UsernameAlreadyExists'
+
+  /v1/users/check-username:
+    get:
+      summary: 查詢帳號是否已存在
+      description: |
+        查詢指定的 username 是否已被使用。
+        用於新增使用者表單的即時驗證。
+        任何已認證的使用者皆可呼叫。
+      operationId: checkUsername
+      tags: [User]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: username
+          in: query
+          required: true
+          description: 要查詢的登入帳號
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 25
+      responses:
+        '200':
+          description: 查詢結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsernameCheckResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/users/batch:
+    post:
+      summary: 批次新增使用者
+      description: |
+        一次新增多筆使用者帳號。
+        若其中任何一筆的 username 已存在，整批返回 409，不做任何寫入（all-or-nothing）。
+        僅系統管理員可執行。
+      operationId: batchCreateUsers
+      tags: [User]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserBatchCreateRequest'
+      responses:
+        '201':
+          description: 批次建立成功，回傳所有新建的使用者清單
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: 其中一筆或多筆帳號已存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: USERNAME_ALREADY_EXISTS
+                message: 帳號 john_doe 已存在，整批新增已取消
+
+  /v1/users/import:
+    post:
+      summary: 匯入使用者（CSV）
+      description: |
+        以 CSV 格式批次匯入使用者帳號。
+        CSV 第一列為欄位標題，必填欄位：username、name、email、password。
+        選填欄位：occupation、bio。
+        若 username 重複（與現有帳號或同一 CSV 中的其他列），該列標記為錯誤，
+        其餘列仍繼續匯入（partial success）。
+        回傳匯入結果摘要。
+        僅系統管理員可執行。
+      operationId: importUsers
+      tags: [User]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV 檔案（UTF-8 編碼，最大 5MB）
+      responses:
+        '200':
+          description: 匯入完成（可能有部分成功/部分失敗）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserImportResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /v1/users/actions/batch-add-group:
+    post:
+      summary: 批次將使用者加入群組
+      description: |
+        將指定的多位使用者加入指定群組。
+        已在群組中的使用者略過（不報錯）。
+        僅系統管理員可執行。
+      operationId: batchAddUsersToGroup
+      tags: [User]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchGroupRequest'
+      responses:
+        '200':
+          description: 操作成功，回傳實際加入的使用者數量
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchGroupResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/GroupNotFound'
+
+  /v1/users/actions/batch-remove-group:
+    post:
+      summary: 批次將使用者從群組移除
+      description: |
+        將指定的多位使用者從指定群組移除。
+        不在群組中的使用者略過（不報錯）。
+        僅系統管理員可執行。
+      operationId: batchRemoveUsersFromGroup
+      tags: [User]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchGroupRequest'
+      responses:
+        '200':
+          description: 操作成功，回傳實際移除的使用者數量
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchGroupResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/GroupNotFound'
+
+  /v1/users/actions/batch-update-field:
+    patch:
+      summary: 批次更新使用者單一欄位值
+      description: |
+        將指定的多位使用者的特定欄位統一更新為同一個值。
+        支援欄位：isEnabled（帳號啟用狀態）、occupation（職業）、bio（簡介）。
+        密碼欄位不支援批次更新（需逐一修改）。
+        僅系統管理員可執行。
+      operationId: batchUpdateUsersField
+      tags: [User]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchUpdateFieldRequest'
+      responses:
+        '200':
+          description: 操作成功，回傳實際更新的使用者數量
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updatedCount:
+                    type: integer
+                    description: 實際更新的使用者數量
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /v1/users/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/UserIdParam'
+
+    get:
+      summary: 取得使用者詳情
+      description: |
+        取得指定使用者的完整資料（不含密碼）。
+        系統管理員可查詢任何使用者；一般使用者僅可查詢自己。
+      operationId: getUser
+      tags: [User]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 使用者詳情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+
+    put:
+      summary: 更新使用者資料
+      description: |
+        完整更新指定使用者的資料（職業、簡介、密碼、群組）。
+        若提供 password 欄位，以 bcrypt 重新 hash 後儲存；密碼永不在 response 出現。
+        僅系統管理員可執行（使用者不可自行修改自己的帳號，此為後台功能）。
+      operationId: updateUser
+      tags: [User]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: 更新後的使用者詳情（不含密碼）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+
+  # ─────────────────────────────────────────────
+  # 群組管理（Groups）
+  # ─────────────────────────────────────────────
+
+  /v1/groups:
+    get:
+      summary: 列出群組清單
+      description: |
+        列出系統中所有群組，可依 groupType 過濾。
+        Anonymous 類型群組不列出（與舊系統 group_select 排除匿名群組邏輯一致）。
+        僅系統管理員可執行。
+      operationId: listGroups
+      tags: [Group]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: groupType
+          in: query
+          description: 依群組類型過濾（Global=一般群組；Anonymous 類型不對外列出）
+          schema:
+            type: string
+            enum: [Global]
+        - name: name
+          in: query
+          description: 依群組名稱模糊搜尋
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 群組清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/GroupSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      summary: 建立群組
+      description: |
+        建立新的使用者群組。
+        僅系統管理員可執行。
+        新系統群組為通用分組機制（groupType 固定為 Global），不涉及 XOOPS 框架的模組權限（xx_group_permission）。
+      operationId: createGroup
+      tags: [Group]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupCreateRequest'
+      responses:
+        '201':
+          description: 群組建立成功
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 新建群組的資源 URL（/v1/groups/{groupId}）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/GroupNameAlreadyExists'
+
+  /v1/groups/{groupId}:
+    parameters:
+      - $ref: '#/components/parameters/GroupIdParam'
+
+    get:
+      summary: 取得群組詳情
+      description: |
+        取得指定群組的完整資料，含成員清單（分頁）。
+        僅系統管理員可執行。
+      operationId: getGroup
+      tags: [Group]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: 群組詳情（含成員清單）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/GroupNotFound'
+
+    put:
+      summary: 更新群組資料
+      description: |
+        更新指定群組的名稱與說明。
+        僅系統管理員可執行。
+        groupType 建立後不可更改（群組類型為系統級屬性）。
+      operationId: updateGroup
+      tags: [Group]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupUpdateRequest'
+      responses:
+        '200':
+          description: 更新後的群組詳情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/GroupNotFound'
+        '409':
+          $ref: '#/components/responses/GroupNameAlreadyExists'
+
+    delete:
+      summary: 刪除群組
+      description: |
+        刪除指定群組。
+        若群組尚有成員（user_group_links 有關聯記錄），回傳 409 GROUP_HAS_MEMBERS。
+        僅系統管理員可執行。
+      operationId: deleteGroup
+      tags: [Group]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 刪除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/GroupNotFound'
+        '409':
+          $ref: '#/components/responses/GroupHasMembers'
+
+
+  # ─────────────────────────────────────────────
+  # 檔案管理（Attachments）
+  # ─────────────────────────────────────────────
+
+  # ── 房間附件 ──────────────────────────────────
+
+  /v1/estates/{estateId}/rooms/{roomId}/attachments:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RoomIdParam'
+
+    get:
+      summary: 列出房間附件清單
+      operationId: listRoomAttachments
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 附件清單
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AttachmentItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/RoomNotFound'
+
+    post:
+      summary: 上傳房間附件
+      operationId: uploadRoomAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AttachmentUploadRequest'
+      responses:
+        '201':
+          description: 附件上傳成功
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 新建附件的資源 URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/RoomNotFound'
+
+  /v1/estates/{estateId}/rooms/{roomId}/attachments/sort:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RoomIdParam'
+
+    put:
+      summary: 更新房間附件排序
+      operationId: sortRoomAttachments
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachmentSortRequest'
+      responses:
+        '200':
+          description: 排序更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/RoomNotFound'
+
+  /v1/estates/{estateId}/rooms/{roomId}/attachments/{attachmentId}:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RoomIdParam'
+      - $ref: '#/components/parameters/AttachmentIdParam'
+
+    patch:
+      summary: 更新房間附件說明
+      operationId: updateRoomAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachmentUpdateRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+    delete:
+      summary: 刪除房間附件
+      description: 同步刪除 Cloud Storage 物件與資料庫記錄。
+      operationId: deleteRoomAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 刪除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+  /v1/estates/{estateId}/rooms/{roomId}/attachments/{attachmentId}/download:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RoomIdParam'
+      - $ref: '#/components/parameters/AttachmentIdParam'
+
+    get:
+      summary: 取得房間附件下載連結
+      description: 回傳 302 redirect 至 Cloud Storage 簽署 URL（有效期 15 分鐘）。
+      operationId: downloadRoomAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '302':
+          description: 重導向至簽署下載 URL
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Cloud Storage 簽署 URL
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+  # ── 設施附件（公共設施圖片） ──────────────────
+
+  /v1/estates/{estateId}/facilities/{facilityName}/attachments:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - name: facilityName
+        in: path
+        required: true
+        schema:
+          type: string
+        description: 設施名稱（URL encoded）
+
+    get:
+      summary: 列出設施附件清單
+      operationId: listFacilityAttachments
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 設施附件清單
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AttachmentItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+    post:
+      summary: 上傳設施圖片
+      operationId: uploadFacilityAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AttachmentUploadRequest'
+      responses:
+        '201':
+          description: 設施附件上傳成功
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 新建附件的資源 URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+  /v1/estates/{estateId}/facilities/{facilityName}/attachments/sort:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - name: facilityName
+        in: path
+        required: true
+        schema:
+          type: string
+        description: 設施名稱（URL encoded）
+
+    put:
+      summary: 更新設施附件排序
+      operationId: sortFacilityAttachments
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachmentSortRequest'
+      responses:
+        '200':
+          description: 排序更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+  /v1/estates/{estateId}/facilities/{facilityName}/attachments/{attachmentId}:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - name: facilityName
+        in: path
+        required: true
+        schema:
+          type: string
+        description: 設施名稱（URL encoded）
+      - $ref: '#/components/parameters/AttachmentIdParam'
+
+    patch:
+      summary: 更新設施附件說明
+      operationId: updateFacilityAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachmentUpdateRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+    delete:
+      summary: 刪除設施附件
+      operationId: deleteFacilityAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 刪除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+  /v1/estates/{estateId}/facilities/{facilityName}/attachments/{attachmentId}/download:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - name: facilityName
+        in: path
+        required: true
+        schema:
+          type: string
+        description: 設施名稱（URL encoded）
+      - $ref: '#/components/parameters/AttachmentIdParam'
+
+    get:
+      summary: 取得設施附件下載連結
+      description: 回傳 302 redirect 至 Cloud Storage 簽署 URL（有效期 15 分鐘）。
+      operationId: downloadFacilityAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '302':
+          description: 重導向至簽署下載 URL
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Cloud Storage 簽署 URL
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+  # ── 租期附件 ──────────────────────────────────
+
+  /v1/estates/{estateId}/rents/{rentId}/attachments:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RentIdParam'
+
+    get:
+      summary: 列出租期附件清單
+      operationId: listRentAttachments
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 附件清單
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AttachmentItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/RentNotFound'
+
+    post:
+      summary: 上傳租期附件
+      operationId: uploadRentAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AttachmentUploadRequest'
+      responses:
+        '201':
+          description: 附件上傳成功
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 新建附件的資源 URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/RentNotFound'
+
+  /v1/estates/{estateId}/rents/{rentId}/attachments/sort:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RentIdParam'
+
+    put:
+      summary: 更新租期附件排序
+      operationId: sortRentAttachments
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachmentSortRequest'
+      responses:
+        '200':
+          description: 排序更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/RentNotFound'
+
+  /v1/estates/{estateId}/rents/{rentId}/attachments/{attachmentId}:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RentIdParam'
+      - $ref: '#/components/parameters/AttachmentIdParam'
+
+    patch:
+      summary: 更新租期附件說明
+      operationId: updateRentAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachmentUpdateRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+    delete:
+      summary: 刪除租期附件
+      operationId: deleteRentAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 刪除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+  /v1/estates/{estateId}/rents/{rentId}/attachments/{attachmentId}/download:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/RentIdParam'
+      - $ref: '#/components/parameters/AttachmentIdParam'
+
+    get:
+      summary: 取得租期附件下載連結
+      description: 回傳 302 redirect 至 Cloud Storage 簽署 URL（有效期 15 分鐘）。
+      operationId: downloadRentAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '302':
+          description: 重導向至簽署下載 URL
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Cloud Storage 簽署 URL
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+  # ── 日誌附件 ──────────────────────────────────
+
+  /v1/estates/{estateId}/schedules/{scheduleId}/attachments:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/ScheduleIdParam'
+
+    get:
+      summary: 列出日誌附件清單
+      operationId: listScheduleAttachments
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 附件清單
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AttachmentItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/ScheduleNotFound'
+
+    post:
+      summary: 上傳日誌附件
+      operationId: uploadScheduleAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AttachmentUploadRequest'
+      responses:
+        '201':
+          description: 附件上傳成功
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 新建附件的資源 URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/ScheduleNotFound'
+
+  /v1/estates/{estateId}/schedules/{scheduleId}/attachments/sort:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/ScheduleIdParam'
+
+    put:
+      summary: 更新日誌附件排序
+      operationId: sortScheduleAttachments
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachmentSortRequest'
+      responses:
+        '200':
+          description: 排序更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/ScheduleNotFound'
+
+  /v1/estates/{estateId}/schedules/{scheduleId}/attachments/{attachmentId}:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/ScheduleIdParam'
+      - $ref: '#/components/parameters/AttachmentIdParam'
+
+    patch:
+      summary: 更新日誌附件說明
+      operationId: updateScheduleAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachmentUpdateRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+    delete:
+      summary: 刪除日誌附件
+      operationId: deleteScheduleAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 刪除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+  /v1/estates/{estateId}/schedules/{scheduleId}/attachments/{attachmentId}/download:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/ScheduleIdParam'
+      - $ref: '#/components/parameters/AttachmentIdParam'
+
+    get:
+      summary: 取得日誌附件下載連結
+      description: 回傳 302 redirect 至 Cloud Storage 簽署 URL（有效期 15 分鐘）。
+      operationId: downloadScheduleAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '302':
+          description: 重導向至簽署下載 URL
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Cloud Storage 簽署 URL
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+  # ── 日誌回應附件 ──────────────────────────────
+
+  /v1/estates/{estateId}/schedules/{scheduleId}/replies/{replyId}/attachments:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/ScheduleIdParam'
+      - $ref: '#/components/parameters/ReplyIdParam'
+
+    get:
+      summary: 列出日誌回應附件清單
+      operationId: listReplyAttachments
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 附件清單
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AttachmentItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/ScheduleNotFound'
+
+    post:
+      summary: 上傳日誌回應附件
+      operationId: uploadReplyAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AttachmentUploadRequest'
+      responses:
+        '201':
+          description: 附件上傳成功
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 新建附件的資源 URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/ScheduleNotFound'
+
+  /v1/estates/{estateId}/schedules/{scheduleId}/replies/{replyId}/attachments/sort:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/ScheduleIdParam'
+      - $ref: '#/components/parameters/ReplyIdParam'
+
+    put:
+      summary: 更新回應附件排序
+      operationId: sortReplyAttachments
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachmentSortRequest'
+      responses:
+        '200':
+          description: 排序更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/ScheduleNotFound'
+
+  /v1/estates/{estateId}/schedules/{scheduleId}/replies/{replyId}/attachments/{attachmentId}:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/ScheduleIdParam'
+      - $ref: '#/components/parameters/ReplyIdParam'
+      - $ref: '#/components/parameters/AttachmentIdParam'
+
+    patch:
+      summary: 更新回應附件說明
+      operationId: updateReplyAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachmentUpdateRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+    delete:
+      summary: 刪除回應附件
+      operationId: deleteReplyAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 刪除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+  /v1/estates/{estateId}/schedules/{scheduleId}/replies/{replyId}/attachments/{attachmentId}/download:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/ScheduleIdParam'
+      - $ref: '#/components/parameters/ReplyIdParam'
+      - $ref: '#/components/parameters/AttachmentIdParam'
+
+    get:
+      summary: 取得回應附件下載連結
+      description: 回傳 302 redirect 至 Cloud Storage 簽署 URL（有效期 15 分鐘）。
+      operationId: downloadReplyAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '302':
+          description: 重導向至簽署下載 URL
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Cloud Storage 簽署 URL
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+  # ── 物業整體附件 ──────────────────────────────
+
+  /v1/estates/{estateId}/attachments:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+
+    get:
+      summary: 列出物業整體附件清單
+      description: 列出掛載在物業整體層級的附件（resource_type='estate'），如管委會章程、物業平面圖、管理規約等。
+      operationId: listEstateAttachments
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 物業整體附件清單
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AttachmentItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+    post:
+      summary: 上傳物業整體附件
+      operationId: uploadEstateAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AttachmentUploadRequest'
+      responses:
+        '201':
+          description: 附件上傳成功
+          headers:
+            Location:
+              schema:
+                type: string
+              description: 新建附件的資源 URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+  /v1/estates/{estateId}/attachments/sort:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+
+    put:
+      summary: 更新物業整體附件排序
+      operationId: sortEstateAttachments
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachmentSortRequest'
+      responses:
+        '200':
+          description: 排序更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/EstateNotFound'
+
+  /v1/estates/{estateId}/attachments/{attachmentId}:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/AttachmentIdParam'
+
+    patch:
+      summary: 更新物業整體附件說明
+      operationId: updateEstateAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachmentUpdateRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+    delete:
+      summary: 刪除物業整體附件
+      description: 同步刪除 Cloud Storage 物件與資料庫記錄。
+      operationId: deleteEstateAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 刪除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+  /v1/estates/{estateId}/attachments/{attachmentId}/download:
+    parameters:
+      - $ref: '#/components/parameters/EstateIdParam'
+      - $ref: '#/components/parameters/AttachmentIdParam'
+
+    get:
+      summary: 取得物業整體附件下載連結
+      description: 回傳 302 redirect 至 Cloud Storage 簽署 URL（有效期 15 分鐘）。
+      operationId: downloadEstateAttachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      responses:
+        '302':
+          description: 重導向至簽署下載 URL
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Cloud Storage 簽署 URL
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EstateAccessDenied'
+        '404':
+          $ref: '#/components/responses/AttachmentNotFound'
+
+# ─────────────────────────────────────────────
+# Components
+# ─────────────────────────────────────────────
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    EstateIdParam:
+      name: estateId
+      in: path
+      required: true
+      description: 物業流水號
+      schema:
+        type: integer
+        minimum: 1
+
+    RoomIdParam:
+      name: roomId
+      in: path
+      required: true
+      description: 房間流水號
+      schema:
+        type: integer
+        minimum: 1
+
+    UserIdParam:
+      name: userId
+      in: path
+      required: true
+      description: 使用者流水號
+      schema:
+        type: integer
+        minimum: 1
+
+    RentIdParam:
+      name: rentId
+      in: path
+      required: true
+      description: 租期流水號
+      schema:
+        type: integer
+        minimum: 1
+
+    TenantIdParam:
+      name: tenantId
+      in: path
+      required: true
+      description: 房客流水號
+      schema:
+        type: integer
+        minimum: 1
+
+    ScheduleIdParam:
+      name: scheduleId
+      in: path
+      required: true
+      description: 日誌流水號
+      schema:
+        type: integer
+        minimum: 1
+
+    ReplyIdParam:
+      name: replyId
+      in: path
+      required: true
+      description: 回應流水號
+      schema:
+        type: integer
+        minimum: 1
+
+    AccountingIdParam:
+      name: accountingId
+      in: path
+      required: true
+      description: 帳務流水號
+      schema:
+        type: integer
+        minimum: 1
+
+    GroupIdParam:
+      name: groupId
+      in: path
+      required: true
+      description: 群組流水號
+      schema:
+        type: integer
+        minimum: 1
+
+    AttachmentIdParam:
+      name: attachmentId
+      in: path
+      required: true
+      description: 附件流水號
+      schema:
+        type: integer
+        minimum: 1
+
+    PageParam:
+      name: page
+      in: query
+      description: 頁碼（從 1 開始）
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    PageSizeParam:
+      name: pageSize
+      in: query
+      description: 每頁筆數
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  schemas:
+
+    # ── 通用結構 ──────────────────────────────
+
+    PaginatedResponse:
+      type: object
+      required: [total, page, pageSize]
+      properties:
+        total:
+          type: integer
+          description: 總筆數
+        page:
+          type: integer
+          description: 當前頁碼
+        pageSize:
+          type: integer
+          description: 每頁筆數
+
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: 錯誤代碼（SNAKE_UPPER_CASE）
+        message:
+          type: string
+          description: 人類可讀說明
+        details:
+          type: array
+          description: 欄位驗證錯誤明細（僅 VALIDATION_ERROR 時出現）
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    # ── 物業（Estate）────────────────────────
+
+    EstateSummary:
+      type: object
+      description: 物業清單項目（精簡版）
+      required: [estateId, title, shortTitle]
+      properties:
+        estateId:
+          type: integer
+          description: 物業流水號
+        title:
+          type: string
+          description: 物業全名（案名）
+        shortTitle:
+          type: string
+          description: 物業簡稱
+
+    EstateDetail:
+      type: object
+      description: 物業詳情
+      required: [estateId, title, shortTitle]
+      properties:
+        estateId:
+          type: integer
+        title:
+          type: string
+          description: 物業全名（案名）
+        shortTitle:
+          type: string
+          description: 物業簡稱（用於 Email 標題等）
+        ownerUserId:
+          type: integer
+          description: 業主系統使用者 ID
+        address:
+          type: string
+          description: 物業門牌地址
+        phone:
+          type: string
+          description: 物業聯絡電話
+        ownerName:
+          type: string
+          description: 業主姓名
+        ownerEmail:
+          type: string
+          format: email
+          description: 業主 Email
+        website:
+          type: string
+          format: uri
+          description: 物業官網網址
+        facebook:
+          type: string
+          description: 物業 Facebook 連結
+        note:
+          type: string
+          description: 物業備註（HTML rich text）
+        facilities:
+          type: array
+          description: 公共設施名稱清單
+          items:
+            type: string
+          example: ["電梯", "停車場", "游泳池"]
+        electricityRate:
+          type: number
+          format: float
+          description: 每度電費單價（元/度）
+          example: 4.5
+        electricityBillingCycle:
+          type: string
+          enum: [monthly, bimonthly]
+          description: 電費收費週期（monthly=單月，bimonthly=雙月）
+        zones:
+          type: array
+          description: 區域/棟別清單
+          items:
+            type: string
+          example: ["A棟", "B棟"]
+
+    EstateCreateRequest:
+      type: object
+      required: [title, shortTitle, ownerName, ownerEmail, electricityRate, electricityBillingCycle]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+          description: 物業全名（案名）
+        shortTitle:
+          type: string
+          maxLength: 255
+          description: 物業簡稱
+        ownerName:
+          type: string
+          maxLength: 255
+          description: 業主姓名
+        ownerEmail:
+          type: string
+          format: email
+          maxLength: 255
+          description: 業主 Email（用於建立業主帳號）
+        address:
+          type: string
+          maxLength: 255
+        phone:
+          type: string
+          maxLength: 255
+        website:
+          type: string
+          format: uri
+          maxLength: 255
+        facebook:
+          type: string
+          maxLength: 255
+        note:
+          type: string
+          description: 備註（HTML rich text）
+        facilities:
+          type: array
+          items:
+            type: string
+          description: 公共設施名稱清單
+        electricityRate:
+          type: number
+          format: float
+          description: 每度電費單價
+          default: 4.5
+        electricityBillingCycle:
+          type: string
+          enum: [monthly, bimonthly]
+          default: bimonthly
+        zones:
+          type: array
+          items:
+            type: string
+          description: 區域/棟別清單
+
+    EstateUpdateRequest:
+      type: object
+      required: [title, shortTitle, ownerName, ownerEmail, electricityRate, electricityBillingCycle]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        shortTitle:
+          type: string
+          maxLength: 255
+        ownerName:
+          type: string
+          maxLength: 255
+        ownerEmail:
+          type: string
+          format: email
+          maxLength: 255
+        address:
+          type: string
+          maxLength: 255
+        phone:
+          type: string
+          maxLength: 255
+        website:
+          type: string
+          format: uri
+          maxLength: 255
+        facebook:
+          type: string
+          maxLength: 255
+        note:
+          type: string
+        facilities:
+          type: array
+          items:
+            type: string
+        electricityRate:
+          type: number
+          format: float
+        electricityBillingCycle:
+          type: string
+          enum: [monthly, bimonthly]
+        zones:
+          type: array
+          items:
+            type: string
+
+    # ── 公共設施備忘錄（Facility）────────────
+
+    FacilityItem:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: 設施名稱（對應 estate.facilities 清單中的值）
+        memo:
+          type: string
+          description: 設施備忘錄（HTML rich text）
+        updatedAt:
+          type: string
+          format: date-time
+          description: 最後更新時間（RFC3339）
+
+    FacilityMemoUpdateRequest:
+      type: object
+      required: [facilityName, memo]
+      properties:
+        facilityName:
+          type: string
+          description: 設施名稱（需存在於 estate.facilities 清單中）
+        memo:
+          type: string
+          description: 備忘錄內容（HTML rich text）
+
+    # ── 物業成員（Member）────────────────────
+
+    EstateMember:
+      type: object
+      required: [userId, memberLevel]
+      properties:
+        userId:
+          type: integer
+          description: 使用者 ID
+        name:
+          type: string
+          description: 顯示名稱
+        username:
+          type: string
+          description: 登入帳號
+        unit:
+          type: string
+          description: 所屬單位名稱
+        title:
+          type: string
+          description: 職稱（如「主承辦人」）
+        memberLevel:
+          type: string
+          enum: [admin, readonly]
+          description: 管理權限（admin=管理員，readonly=唯讀/通知成員）
+        calendarTextColor:
+          type: string
+          description: 行事曆文字顏色（hex，如 #FFFFFF）
+          example: '#FFFFFF'
+        calendarBgColor:
+          type: string
+          description: 行事曆背景顏色（hex，如 #6EB3E5）
+          example: '#6EB3E5'
+
+    EstateMemberListUpdateRequest:
+      type: object
+      required: [userIds]
+      properties:
+        userIds:
+          type: array
+          description: 成員 userId 完整清單（以此清單取代現有成員分配）
+          items:
+            type: integer
+          minItems: 0
+
+    EstateMemberUpdateRequest:
+      type: object
+      properties:
+        unit:
+          type: string
+          maxLength: 255
+          description: 所屬單位名稱
+        title:
+          type: string
+          maxLength: 255
+          description: 職稱
+        memberLevel:
+          type: string
+          enum: [admin, readonly]
+          description: 管理權限
+        calendarTextColor:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          description: 行事曆文字顏色（hex）
+        calendarBgColor:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          description: 行事曆背景顏色（hex）
+
+    # ── 房間（Room）──────────────────────────
+
+    RoomPrice:
+      type: object
+      description: 各繳費週期的租金定價。未設定的週期值為 null。
+      properties:
+        yearly:
+          type: integer
+          nullable: true
+          description: 年繳金額（元）；未設定時為 null
+        halfYearly:
+          type: integer
+          nullable: true
+          description: 半年繳金額（元）；未設定時為 null
+        quarterly:
+          type: integer
+          nullable: true
+          description: 季繳金額（元）；未設定時為 null
+        monthly:
+          type: integer
+          nullable: true
+          description: 月繳金額（元）；未設定時為 null
+
+    RoomSummary:
+      type: object
+      description: 房間清單項目（精簡版）
+      required: [roomId, estateId, roomNumber]
+      properties:
+        roomId:
+          type: integer
+        estateId:
+          type: integer
+        roomNumber:
+          type: string
+          description: 房號（如 A101）
+        storey:
+          type: string
+          description: 所在樓層
+        roomType:
+          type: string
+          description: 房型（如 2房1廳）
+        sizeSquareMeter:
+          type: number
+          format: float
+          description: 坪數
+        zone:
+          type: string
+          description: 所屬棟別/區域
+        sortOrder:
+          type: integer
+          description: 顯示排序
+        activeRentId:
+          type: integer
+          nullable: true
+          description: 現役租約 ID（無租約時為 null）
+
+    RoomDetail:
+      type: object
+      description: 房間詳情
+      required: [roomId, estateId, roomNumber]
+      properties:
+        roomId:
+          type: integer
+        estateId:
+          type: integer
+        roomNumber:
+          type: string
+          description: 房號（如 A101）
+        storey:
+          type: string
+          description: 所在樓層
+        roomType:
+          type: string
+          description: 房型
+        sizeSquareMeter:
+          type: number
+          format: float
+          description: 坪數
+        facilities:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: integer
+            minimum: 0
+          description: '房間設備清單。key 為設備名稱，value 為數量（0 表示不含此設備）。例：{"床組": 1, "書桌": 2, "電視": 0}'
+        prices:
+          $ref: '#/components/schemas/RoomPrice'
+        note:
+          type: string
+          description: 備註（HTML rich text）
+        sortOrder:
+          type: integer
+        zone:
+          type: string
+          description: 所屬棟別/區域
+
+    RoomCreateRequest:
+      type: object
+      required: [roomNumber]
+      properties:
+        roomNumber:
+          type: string
+          maxLength: 255
+          description: 房號（如 A101）
+        storey:
+          type: string
+          maxLength: 255
+        roomType:
+          type: string
+          maxLength: 255
+        sizeSquareMeter:
+          type: number
+          format: float
+          minimum: 0
+        facilities:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: integer
+            minimum: 0
+          description: '房間設備清單。key 為設備名稱，value 為數量（0 表示不含此設備）。例：{"床組": 1, "書桌": 2, "電視": 0}'
+        prices:
+          $ref: '#/components/schemas/RoomPrice'
+        note:
+          type: string
+        sortOrder:
+          type: integer
+          description: 未提供時自動取最大排序 + 1
+        zone:
+          type: string
+          maxLength: 255
+          description: 所屬棟別/區域（需對應物業設定的 zones 其中一個值）
+
+    RoomUpdateRequest:
+      type: object
+      required: [roomNumber]
+      properties:
+        roomNumber:
+          type: string
+          maxLength: 255
+        storey:
+          type: string
+          maxLength: 255
+        roomType:
+          type: string
+          maxLength: 255
+        sizeSquareMeter:
+          type: number
+          format: float
+          minimum: 0
+        facilities:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: integer
+            minimum: 0
+          description: '房間設備清單。key 為設備名稱，value 為數量（0 表示不含此設備）。例：{"床組": 1, "書桌": 2, "電視": 0}'
+        prices:
+          $ref: '#/components/schemas/RoomPrice'
+        note:
+          type: string
+        sortOrder:
+          type: integer
+        zone:
+          type: string
+          maxLength: 255
+
+    RoomSortUpdateRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          description: 完整房間排序清單
+          items:
+            type: object
+            required: [roomId, sortOrder]
+            properties:
+              roomId:
+                type: integer
+              sortOrder:
+                type: integer
+                minimum: 0
+
+    # ── 租賃（Rent）──────────────────────────
+
+    RentSummary:
+      type: object
+      description: 租期清單項目（精簡版）
+      required: [rentId, roomId, startDate, endDate, paymentMethod, status]
+      properties:
+        rentId:
+          type: integer
+          description: 租期流水號
+        roomId:
+          type: integer
+          description: 所屬房間 ID
+        roomNumber:
+          type: string
+          description: 房號（如 A101）
+        startDate:
+          type: string
+          format: date
+          description: 租約起始日（YYYY-MM-DD）
+        endDate:
+          type: string
+          format: date
+          description: 租約到期日（YYYY-MM-DD）
+        earlyMoveInDate:
+          type: string
+          format: date
+          nullable: true
+          description: 提前入住日（null 表示無）
+        paymentMethod:
+          type: string
+          enum: [yearly, halfYearly, quarterly, monthly]
+          description: 繳費方式（yearly=年繳，halfYearly=半年，quarterly=季繳，monthly=月繳）
+        deposit:
+          type: integer
+          description: 押金金額（元）
+        status:
+          type: string
+          enum: [active, archived]
+          description: 租約狀態（active=現役，archived=已封存/退租）
+        renewalStatus:
+          type: string
+          enum: [unset, renew, no_renew]
+          description: 到期續租意向（unset=未設定，renew=續租，no_renew=不續租）
+        daysRemaining:
+          type: integer
+          nullable: true
+          description: 距到期日剩餘天數（已退租時為 null）
+        primaryTenantName:
+          type: string
+          nullable: true
+          description: 主房客姓名（第一位關聯房客）
+
+    RentDetail:
+      type: object
+      description: 租期詳情
+      required: [rentId, roomId, startDate, endDate, paymentMethod, status]
+      properties:
+        rentId:
+          type: integer
+        roomId:
+          type: integer
+        roomNumber:
+          type: string
+          description: 房號
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        earlyMoveInDate:
+          type: string
+          format: date
+          nullable: true
+        deposit:
+          type: integer
+          description: 押金金額（元）
+        paymentMethod:
+          type: string
+          enum: [yearly, halfYearly, quarterly, monthly]
+        initialElectricReading:
+          type: number
+          format: float
+          description: 入住時起始電錶累積度數
+        renewalStatus:
+          type: string
+          enum: [unset, renew, no_renew]
+        note:
+          type: string
+          description: 備註（HTML rich text）
+        petInfo:
+          type: string
+          description: 寵物資訊
+        status:
+          type: string
+          enum: [active, archived]
+        terminationInfo:
+          $ref: '#/components/schemas/TerminationInfo'
+          description: 退租結算資訊（僅 status=archived 時有值）
+        tenants:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tenant'
+          description: 關聯房客清單
+
+    RentCreateRequest:
+      type: object
+      required: [roomId, startDate, endDate, paymentMethod, deposit, initialElectricReading]
+      properties:
+        roomId:
+          type: integer
+          description: 所屬房間 ID
+          minimum: 1
+        startDate:
+          type: string
+          format: date
+          description: 租約起始日（YYYY-MM-DD）
+        endDate:
+          type: string
+          format: date
+          description: 租約到期日（YYYY-MM-DD，需晚於 startDate）
+        earlyMoveInDate:
+          type: string
+          format: date
+          nullable: true
+          description: 提前入住日（選填，需早於或等於 startDate）
+        deposit:
+          type: integer
+          minimum: 0
+          description: 押金金額（元）
+        paymentMethod:
+          type: string
+          enum: [yearly, halfYearly, quarterly, monthly]
+          description: 繳費方式
+        initialElectricReading:
+          type: number
+          format: float
+          minimum: 0
+          description: 入住時起始電錶累積度數
+        renewalStatus:
+          type: string
+          enum: [unset, renew, no_renew]
+          default: unset
+          description: 到期續租意向
+        note:
+          type: string
+          description: 備註（HTML rich text）
+        petInfo:
+          type: string
+          maxLength: 255
+          description: 寵物資訊
+        tenants:
+          type: array
+          description: |
+            建立租約時同步關聯的現有房客清單（選填）。
+            每個元素為已存在的 tenantId reference。
+            若需建立新房客，請先呼叫 POST /v1/tenants，取得 tenantId 後再傳入此欄位。
+          items:
+            $ref: '#/components/schemas/RentTenantRef'
+
+    RentUpdateRequest:
+      type: object
+      required: [startDate, endDate, paymentMethod, deposit, initialElectricReading]
+      properties:
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        earlyMoveInDate:
+          type: string
+          format: date
+          nullable: true
+        deposit:
+          type: integer
+          minimum: 0
+        paymentMethod:
+          type: string
+          enum: [yearly, halfYearly, quarterly, monthly]
+        initialElectricReading:
+          type: number
+          format: float
+          minimum: 0
+        renewalStatus:
+          type: string
+          enum: [unset, renew, no_renew]
+        note:
+          type: string
+        petInfo:
+          type: string
+          maxLength: 255
+
+    TerminateRentRequest:
+      type: object
+      required: [terminationDate, finalElectricReading, reason]
+      properties:
+        terminationDate:
+          type: string
+          format: date
+          description: 退租日期（YYYY-MM-DD）
+        finalElectricReading:
+          type: number
+          format: float
+          minimum: 0
+          description: 退租時電錶累積度數（需大於等於入住起始度數）
+        reason:
+          type: string
+          description: 退租原因（如「租約到期」）
+        additionalCharges:
+          type: object
+          description: 額外費用（向房客收取）
+          properties:
+            damageFee:
+              type: integer
+              minimum: 0
+              description: 毀損費（元）
+              default: 0
+            cleaningFee:
+              type: integer
+              minimum: 0
+              description: 清潔費（元）
+              default: 0
+            otherFee:
+              type: integer
+              minimum: 0
+              description: 其他費用（元）
+              default: 0
+            rentBack:
+              type: integer
+              minimum: 0
+              description: 未到期租金退還（元）
+              default: 0
+
+    TerminateRentPreview:
+      type: object
+      description: 退租結算預覽（不寫入 DB）
+      required: [electricityCost, depositRefund, totalRefund]
+      properties:
+        initialElectricReading:
+          type: number
+          format: float
+          description: 入住時起始電錶度數
+        finalElectricReading:
+          type: number
+          format: float
+          description: 退租時電錶度數
+        electricityUsage:
+          type: number
+          format: float
+          description: 用電度數（finalElectricReading - initialElectricReading）
+        electricityRate:
+          type: number
+          format: float
+          description: 每度電費單價（來自物業設定）
+        electricityCost:
+          type: integer
+          description: 電費（元）= 用電度數 × 單價，四捨五入
+        depositRefund:
+          type: integer
+          description: 應退押金（元，以負數表示退款）
+        additionalCharges:
+          type: object
+          properties:
+            damageFee:
+              type: integer
+            cleaningFee:
+              type: integer
+            otherFee:
+              type: integer
+            rentBack:
+              type: integer
+        totalRefund:
+          type: integer
+          description: 總退款金額（元，負數表示退款給房客）
+
+    TerminationInfo:
+      type: object
+      description: 退租結算資訊（儲存於租約記錄）
+      properties:
+        reason:
+          type: string
+          description: 退租原因
+        terminationDate:
+          type: string
+          format: date-time
+          description: 退租日期時間（RFC3339）
+        operatorUserId:
+          type: integer
+          description: 執行退租的使用者 ID
+        initialElectricReading:
+          type: number
+          format: float
+        finalElectricReading:
+          type: number
+          format: float
+        electricityCost:
+          type: integer
+          description: 電費（元）
+        depositRefund:
+          type: integer
+          description: 退押金（元，負數）
+        totalRefund:
+          type: integer
+          description: 總退款（元，負數為退款）
+        primaryTenantName:
+          type: string
+          description: 主房客姓名
+        additionalCharges:
+          type: object
+          properties:
+            damageFee:
+              type: integer
+            cleaningFee:
+              type: integer
+            otherFee:
+              type: integer
+            rentBack:
+              type: integer
+
+    PaymentReminder:
+      type: object
+      description: 繳費到期提醒項目
+      required: [rentId, roomId, nextPaymentDate]
+      properties:
+        rentId:
+          type: integer
+        roomId:
+          type: integer
+        roomNumber:
+          type: string
+        primaryTenantName:
+          type: string
+          nullable: true
+        paymentMethod:
+          type: string
+          enum: [yearly, halfYearly, quarterly, monthly]
+        nextPaymentDate:
+          type: string
+          format: date
+          description: 下次應繳日（YYYY-MM-DD）
+        daysUntilDue:
+          type: integer
+          description: 距下次應繳日天數（負數表示已逾期）
+        isPaid:
+          type: boolean
+          description: 是否已繳本期
+
+    PaymentScheduleItem:
+      type: object
+      description: 租金應繳時程項目
+      required: [dueDate, isPaid]
+      properties:
+        dueDate:
+          type: string
+          format: date
+          description: 應繳日（YYYY-MM-DD）
+        isPaid:
+          type: boolean
+          description: 是否已繳
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 繳費時間（RFC3339，未繳時為 null）
+        accountingId:
+          type: integer
+          nullable: true
+          description: 對應帳務記錄 ID（未繳時為 null）
+
+    # ── 房客（Tenant）────────────────────────
+
+    RentTenantRef:
+      type: object
+      description: 建立租約時用於 reference 既有房客的簡易結構
+      required: [tenantId]
+      properties:
+        tenantId:
+          type: integer
+          description: 已存在的房客流水號
+          minimum: 1
+
+    TenantLinkRequest:
+      type: object
+      description: 將現有房客關聯至租期的請求
+      required: [tenantId]
+      properties:
+        tenantId:
+          type: integer
+          description: 要關聯的房客流水號
+          minimum: 1
+
+    Tenant:
+      type: object
+      description: 房客資料
+      required: [tenantId, name]
+      properties:
+        tenantId:
+          type: integer
+          description: 房客流水號
+        name:
+          type: string
+          description: 房客姓名
+        birthday:
+          type: string
+          format: date
+          nullable: true
+          description: 生日（YYYY-MM-DD）
+        nationalId:
+          type: string
+          description: 身份證號
+        registeredAddress:
+          type: string
+          description: 戶籍地址
+        phone:
+          type: string
+          description: 聯絡電話
+        occupation:
+          type: string
+          description: 職業
+        emergencyContact:
+          type: string
+          description: 緊急聯絡人
+        email:
+          type: string
+          format: email
+          description: Email
+        note:
+          type: string
+          description: 備註
+
+    TenantCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          description: 房客姓名
+        birthday:
+          type: string
+          format: date
+          description: 生日（YYYY-MM-DD）
+        nationalId:
+          type: string
+          maxLength: 255
+          description: 身份證號
+        registeredAddress:
+          type: string
+          maxLength: 255
+          description: 戶籍地址
+        phone:
+          type: string
+          maxLength: 255
+          description: 聯絡電話
+        occupation:
+          type: string
+          maxLength: 255
+          description: 職業
+        emergencyContact:
+          type: string
+          maxLength: 255
+          description: 緊急聯絡人
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          description: Email
+        note:
+          type: string
+          description: 備註
+
+    TenantUpdateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        birthday:
+          type: string
+          format: date
+        nationalId:
+          type: string
+          maxLength: 255
+        registeredAddress:
+          type: string
+          maxLength: 255
+        phone:
+          type: string
+          maxLength: 255
+        occupation:
+          type: string
+          maxLength: 255
+        emergencyContact:
+          type: string
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        note:
+          type: string
+
+    # ── 電費（Electric）──────────────────────
+
+    ElectricReadingItem:
+      type: object
+      description: 單筆電錶度數記錄
+      required: [roomId, year, month, degrees]
+      properties:
+        roomId:
+          type: integer
+          description: 房間 ID
+        roomNumber:
+          type: string
+          description: 房號（如 A101）
+        year:
+          type: integer
+          description: 記錄年份
+        month:
+          type: integer
+          minimum: 1
+          maximum: 12
+          description: 記錄月份（1-12）
+        degrees:
+          type: number
+          format: float
+          description: 電錶累積度數（累積值，非當月用量）
+        recordedBy:
+          type: integer
+          nullable: true
+          description: 記錄者 userId
+        updatedAt:
+          type: string
+          format: date-time
+          description: 最後更新時間（RFC3339）
+
+    ElectricReadingRoomEntry:
+      type: object
+      description: 單一房間在查詢期間的電錶度數資料
+      required: [roomId, roomNumber, readings]
+      properties:
+        roomId:
+          type: integer
+        roomNumber:
+          type: string
+          description: 房號
+        zone:
+          type: string
+          nullable: true
+          description: 所屬棟別/區域
+        readings:
+          type: array
+          description: 此房間在查詢期間各月份的電錶度數（無記錄的月份不出現）
+          items:
+            type: object
+            required: [year, month]
+            properties:
+              year:
+                type: integer
+              month:
+                type: integer
+                minimum: 1
+                maximum: 12
+              degrees:
+                type: number
+                format: float
+                nullable: true
+                description: 電錶累積度數（null 表示該月尚未輸入）
+              updatedAt:
+                type: string
+                format: date-time
+                nullable: true
+
+    ElectricReadingListResponse:
+      type: object
+      description: 電錶度數查詢結果
+      required: [estateId, electricityRate, months, rooms]
+      properties:
+        estateId:
+          type: integer
+        electricityRate:
+          type: number
+          format: float
+          description: 每度電費單價（元/度），來自 estate.electricityRate
+        months:
+          type: array
+          description: 查詢涵蓋的年月清單（依時間順序排列）
+          items:
+            type: object
+            required: [year, month]
+            properties:
+              year:
+                type: integer
+              month:
+                type: integer
+                minimum: 1
+                maximum: 12
+        rooms:
+          type: array
+          description: 各房間電錶度數資料
+          items:
+            $ref: '#/components/schemas/ElectricReadingRoomEntry'
+
+    ElectricReadingUpsertItem:
+      type: object
+      description: 單筆電錶度數 upsert 項目
+      required: [roomId, year, month, degrees]
+      properties:
+        roomId:
+          type: integer
+          description: 房間 ID（必須屬於此物業）
+        year:
+          type: integer
+          minimum: 2000
+          maximum: 9999
+          description: 記錄年份
+        month:
+          type: integer
+          minimum: 1
+          maximum: 12
+          description: 記錄月份（1-12）
+        degrees:
+          type: number
+          format: float
+          minimum: 0
+          description: 電錶累積度數
+
+    ElectricReadingBatchUpsertRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          description: 要 upsert 的電錶度數清單（僅提交有值的格子）
+          items:
+            $ref: '#/components/schemas/ElectricReadingUpsertItem'
+
+    # ── 日誌/排程（Schedule）────────────────────
+
+    ScheduleSummary:
+      type: object
+      description: 日誌摘要（用於清單顯示）
+      required: [scheduleId, estateId, scheduledAt, kind, status, reporterUserId, createdAt]
+      properties:
+        scheduleId:
+          type: integer
+          description: 日誌流水號
+        estateId:
+          type: integer
+          description: 所屬物業 ID
+        roomId:
+          type: integer
+          nullable: true
+          description: 關聯房間 ID（null 表示物業整體）
+        roomNumber:
+          type: string
+          nullable: true
+          description: 房號（roomId 為 null 時此欄位也為 null）
+        scheduledAt:
+          type: string
+          format: date-time
+          description: 辦理日期時間（RFC3339）
+        kind:
+          type: string
+          description: 日誌分類（如「例行」「叫修」，值來自系統設定）
+        status:
+          type: string
+          description: 辦理狀況（如「處理中」，值來自系統設定）
+        statusColor:
+          type: string
+          nullable: true
+          description: 辦理狀況對應的顏色（hex，如 #FF0000）
+        contentSnippet:
+          type: string
+          description: 日誌內容摘要（純文字，去除 HTML，最多 100 字元）
+        reporterUserId:
+          type: integer
+          description: 填報人 userId
+        reporterName:
+          type: string
+          description: 填報人顯示名稱
+        assistUserId:
+          type: integer
+          nullable: true
+          description: |
+            協辦人員：
+            - null = 無協辦人
+            - 0 = 全體人員
+            - >0 = 指定使用者的 userId
+        assistName:
+          type: string
+          nullable: true
+          description: 協辦人員顯示名稱（null=無，"全體人員"=0，名稱=>0）
+        replyCount:
+          type: integer
+          description: 回應數量
+        createdAt:
+          type: string
+          format: date-time
+          description: 建立時間（RFC3339）
+
+    Schedule:
+      type: object
+      description: 日誌完整資訊（不含回應清單，供 POST/PUT 回應使用）
+      required: [scheduleId, estateId, scheduledAt, kind, status, reporterUserId, createdAt]
+      properties:
+        scheduleId:
+          type: integer
+        estateId:
+          type: integer
+        roomId:
+          type: integer
+          nullable: true
+          description: 關聯房間 ID（null 表示物業整體）
+        roomNumber:
+          type: string
+          nullable: true
+        scheduledAt:
+          type: string
+          format: date-time
+          description: 辦理日期時間（RFC3339）
+        kind:
+          type: string
+          description: 日誌分類
+        status:
+          type: string
+          description: 辦理狀況
+        statusColor:
+          type: string
+          nullable: true
+          description: 辦理狀況顏色（hex）
+        content:
+          type: string
+          description: 日誌內容（HTML，CkEditor 輸出）
+        reporterUserId:
+          type: integer
+        reporterName:
+          type: string
+        assistUserId:
+          type: integer
+          nullable: true
+          description: |
+            協辦人員：null=無，0=全體人員，>0=指定 userId
+        assistName:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    ScheduleDetail:
+      allOf:
+        - $ref: '#/components/schemas/Schedule'
+        - type: object
+          description: 日誌詳情（含回應清單與帳務記錄）
+          properties:
+            replies:
+              type: array
+              description: 回應清單（依 replyId 升序）
+              items:
+                $ref: '#/components/schemas/Reply'
+            accountings:
+              type: array
+              description: 關聯帳務記錄清單
+              items:
+                type: object
+                properties:
+                  accountingId:
+                    type: integer
+                  tag:
+                    type: string
+                    description: 帳務標記（如「日誌」）
+                  income:
+                    type: integer
+                    description: 收入金額（元）
+                  expenditure:
+                    type: integer
+                    description: 支出金額（元）
+                  accountingDate:
+                    type: string
+                    format: date-time
+                  title:
+                    type: string
+                    description: 科目說明
+
+    ScheduleListResponse:
+      type: object
+      description: 日誌清單回應（含分頁與月份導覽）
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleSummary'
+        total:
+          type: integer
+          description: 符合條件的總筆數
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        monthGroups:
+          type: array
+          description: |
+            月份分組導覽清單（依年月降序），僅在未指定 roomId 過濾時回傳。
+            供 client 渲染月份側欄選單使用。
+          items:
+            type: object
+            required: [yearMonth, label]
+            properties:
+              yearMonth:
+                type: string
+                description: 年月字串（格式 YYYY-MM）
+              label:
+                type: string
+                description: 顯示標籤（如「2026年03月」）
+
+    ScheduleCreateRequest:
+      type: object
+      required: [scheduledAt, kind, status, content]
+      properties:
+        roomId:
+          type: integer
+          nullable: true
+          minimum: 1
+          description: 關聯房間 ID（不帶或 null 表示物業整體）
+        scheduledAt:
+          type: string
+          format: date-time
+          description: 辦理日期時間（RFC3339）
+        kind:
+          type: string
+          maxLength: 255
+          description: 日誌分類（值應與系統設定的 log_type 一致）
+        status:
+          type: string
+          maxLength: 255
+          description: 辦理狀況（值應與系統設定的 status_opt 一致）
+        content:
+          type: string
+          description: 日誌內容（HTML，CkEditor 輸出）
+        reporterUserId:
+          type: integer
+          minimum: 1
+          description: 填報人 userId（不帶時由 JWT 取得當前使用者）
+        assistUserId:
+          type: integer
+          nullable: true
+          description: |
+            協辦人員：
+            - 不帶或 null = 無協辦人
+            - 0 = 全體人員
+            - >0 = 指定使用者的 userId
+
+    ScheduleUpdateRequest:
+      type: object
+      required: [scheduledAt, kind, status, content]
+      properties:
+        roomId:
+          type: integer
+          nullable: true
+          minimum: 1
+          description: 關聯房間 ID（null 表示物業整體）
+        scheduledAt:
+          type: string
+          format: date-time
+          description: 辦理日期時間（RFC3339）
+        kind:
+          type: string
+          maxLength: 255
+          description: 日誌分類
+        status:
+          type: string
+          maxLength: 255
+          description: 辦理狀況
+        content:
+          type: string
+          description: 日誌內容（HTML）
+        assistUserId:
+          type: integer
+          nullable: true
+          description: |
+            協辦人員：null=無，0=全體人員，>0=指定 userId
+            注意：填報人（reporterUserId）編輯時不可修改（與舊系統一致）
+
+    Reply:
+      type: object
+      description: 日誌回應
+      required: [replyId, scheduleId, content, authorUserId, repliedAt]
+      properties:
+        replyId:
+          type: integer
+          description: 回應流水號
+        scheduleId:
+          type: integer
+          description: 所屬日誌 ID
+        content:
+          type: string
+          description: 回應內容（HTML，CkEditor 輸出）
+        authorUserId:
+          type: integer
+          description: 回應者 userId
+        authorName:
+          type: string
+          description: 回應者顯示名稱
+        repliedAt:
+          type: string
+          format: date-time
+          description: 回應日期時間（RFC3339，由系統寫入）
+
+    ReplyCreateRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          description: 回應內容（HTML，CkEditor 輸出）
+        authorUserId:
+          type: integer
+          minimum: 1
+          description: 回應者 userId（不帶時由 JWT 取得當前使用者）
+
+    ReplyUpdateRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          description: 回應內容（HTML，CkEditor 輸出）
+
+    # ── 使用者（User）────────────────────────
+
+    UserSummary:
+      type: object
+      required: [userId, username]
+      properties:
+        userId:
+          type: integer
+        name:
+          type: string
+          description: 顯示名稱
+        username:
+          type: string
+          description: 登入帳號
+
+    UserDetail:
+      type: object
+      description: 使用者完整資料（不含密碼）
+      required: [userId, username, isEnabled]
+      properties:
+        userId:
+          type: integer
+          description: 使用者流水號
+        name:
+          type: string
+          description: 顯示名稱（真實姓名）
+        username:
+          type: string
+          description: 登入帳號（最長 25 字元）
+        email:
+          type: string
+          format: email
+          description: Email
+        occupation:
+          type: string
+          description: 職業
+        bio:
+          type: string
+          description: 簡介
+        isEnabled:
+          type: boolean
+          description: 帳號是否啟用（對應舊系統 level=1）
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 最後登入時間（RFC3339；未曾登入時為 null）
+        createdAt:
+          type: string
+          format: date-time
+          description: 帳號建立時間（RFC3339）
+        groups:
+          type: array
+          description: 所屬群組清單
+          items:
+            $ref: '#/components/schemas/UserGroupRef'
+
+    UserGroupRef:
+      type: object
+      description: 使用者所屬群組的簡要資訊
+      required: [groupId, name]
+      properties:
+        groupId:
+          type: integer
+          description: 群組流水號
+        name:
+          type: string
+          description: 群組名稱
+
+    UserCreateRequest:
+      type: object
+      required: [username, name, email, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 25
+          description: 登入帳號（唯一，建立後不可更改）
+        name:
+          type: string
+          maxLength: 60
+          description: 顯示名稱（真實姓名）
+        email:
+          type: string
+          format: email
+          maxLength: 60
+          description: Email
+        password:
+          type: string
+          minLength: 6
+          description: 初始密碼（服務端以 bcrypt 儲存，永不在 response 出現）
+        occupation:
+          type: string
+          maxLength: 100
+          description: 職業
+        bio:
+          type: string
+          description: 簡介
+        groupIds:
+          type: array
+          description: 新建後加入的群組 ID 清單（選填）
+          items:
+            type: integer
+            minimum: 1
+
+    UserUpdateRequest:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+          maxLength: 60
+          description: 顯示名稱（真實姓名）
+        email:
+          type: string
+          format: email
+          maxLength: 60
+          description: Email
+        password:
+          type: string
+          minLength: 6
+          description: 新密碼（選填，不提供則不更改密碼；以 bcrypt 儲存）
+        occupation:
+          type: string
+          maxLength: 100
+          description: 職業
+        bio:
+          type: string
+          description: 簡介
+        isEnabled:
+          type: boolean
+          description: 是否啟用帳號
+        groupIds:
+          type: array
+          description: 使用者所屬群組 ID 清單（完整取代現有群組關聯）
+          items:
+            type: integer
+            minimum: 1
+
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+          minLength: 1
+          description: 目前的密碼（用於驗證身份，不得為空）
+        newPassword:
+          type: string
+          minLength: 6
+          description: 新密碼（至少 6 個字元；服務端以 bcrypt 儲存，永不在 response 出現）
+
+    UserBatchCreateRequest:
+      type: object
+      required: [users]
+      properties:
+        users:
+          type: array
+          minItems: 1
+          description: 要批次建立的使用者清單
+          items:
+            $ref: '#/components/schemas/UserCreateRequest'
+
+    UserImportResult:
+      type: object
+      description: CSV 匯入使用者的結果摘要
+      required: [totalRows, successCount, failureCount]
+      properties:
+        totalRows:
+          type: integer
+          description: CSV 總列數（不含標題列）
+        successCount:
+          type: integer
+          description: 成功匯入的使用者數量
+        failureCount:
+          type: integer
+          description: 匯入失敗的列數
+        failures:
+          type: array
+          description: 失敗明細清單
+          items:
+            type: object
+            required: [rowNumber, username, reason]
+            properties:
+              rowNumber:
+                type: integer
+                description: CSV 中的列號（從 2 開始，1 為標題列）
+              username:
+                type: string
+                description: 該列的 username 值
+              reason:
+                type: string
+                description: 失敗原因（如「帳號已存在」「缺少必填欄位」）
+
+    BatchGroupRequest:
+      type: object
+      required: [userIds, groupId]
+      properties:
+        userIds:
+          type: array
+          minItems: 1
+          description: 要操作的使用者 ID 清單
+          items:
+            type: integer
+            minimum: 1
+        groupId:
+          type: integer
+          minimum: 1
+          description: 目標群組 ID
+
+    BatchGroupResult:
+      type: object
+      required: [affectedCount]
+      properties:
+        affectedCount:
+          type: integer
+          description: 實際被操作的使用者數量（已在群組/不在群組者略過不計入）
+
+    BatchUpdateFieldRequest:
+      type: object
+      required: [userIds, field, value]
+      properties:
+        userIds:
+          type: array
+          minItems: 1
+          description: 要操作的使用者 ID 清單
+          items:
+            type: integer
+            minimum: 1
+        field:
+          type: string
+          enum: [isEnabled, occupation, bio]
+          description: 要更新的欄位名稱（密碼欄位不支援批次更新）
+        value:
+          description: |
+            要設定的值。型別依 field 而定：
+            - isEnabled: boolean
+            - occupation: string（最長 100 字元）
+            - bio: string
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          description: 登入帳號
+        password:
+          type: string
+          description: 密碼（明文，HTTPS 傳輸）
+
+    LoginResponse:
+      type: object
+      required: [token, expiresAt, user]
+      properties:
+        token:
+          type: string
+          description: JWT token（Bearer token，用於後續 Authorization header）
+        expiresAt:
+          type: string
+          format: date-time
+          description: token 過期時間（RFC3339）
+        user:
+          $ref: '#/components/schemas/UserDetail'
+
+    UsernameCheckResponse:
+      type: object
+      required: [username, exists]
+      properties:
+        username:
+          type: string
+          description: 查詢的帳號名稱
+        exists:
+          type: boolean
+          description: 是否已存在（true=已被使用，false=可使用）
+
+    # ── 帳務（Accounting）─────────────────────
+
+    AccountingTitle:
+      type: object
+      description: 單筆會計科目
+      required: [titleId, kind, title]
+      properties:
+        titleId:
+          type: integer
+          description: 科目編號（如 4604、6601）
+        kind:
+          type: string
+          enum: [expense, income]
+          description: 科目類別（expense=費用類，income=收益類）
+        title:
+          type: string
+          description: 科目名稱（如「租金收入」）
+
+    AccountingTitleListResponse:
+      type: object
+      description: 會計科目清單回應（依類別分組）
+      required: [expenseTitles, incomeTitles]
+      properties:
+        expenseTitles:
+          type: array
+          description: 費用類科目（46xx）
+          items:
+            $ref: '#/components/schemas/AccountingTitle'
+        incomeTitles:
+          type: array
+          description: 收益類科目（66xx）
+          items:
+            $ref: '#/components/schemas/AccountingTitle'
+
+    Accounting:
+      type: object
+      description: 帳務記錄
+      required: [accountingId, estateId, income, expenditure, accountingDate, createdBy]
+      properties:
+        accountingId:
+          type: integer
+          description: 帳務流水號
+        estateId:
+          type: integer
+          description: 所屬物業 ID
+        titleId:
+          type: integer
+          nullable: true
+          description: 科目編號（對應 AccountingTitle.titleId）
+        titleName:
+          type: string
+          nullable: true
+          description: 科目名稱（冗餘欄位，便於顯示）
+        description:
+          type: string
+          nullable: true
+          description: 科目說明（自訂文字，可由系統自動填入）
+        income:
+          type: integer
+          description: 收入金額（元，0 表示無收入）
+        expenditure:
+          type: integer
+          description: 支出金額（元，0 表示無支出）
+        accountingDate:
+          type: string
+          format: date-time
+          description: 帳務日期時間（RFC3339）
+        paymentMethod:
+          type: string
+          nullable: true
+          description: 付款方式（如「現金」）
+        counterparty:
+          type: string
+          nullable: true
+          description: 交易對象（如房客姓名）
+        tag:
+          type: string
+          nullable: true
+          description: 帳務標記（業務語意標籤，如「押金」「租金」「電費」「日誌」「退租其他費用」）
+        code:
+          type: string
+          nullable: true
+          description: 辨識碼（如 "{rentId}-{日期}"，用於判斷特定期次是否已繳）
+        linkedResourceType:
+          type: string
+          nullable: true
+          enum: [rent, schedule]
+          description: 關聯的業務資源類型
+        linkedResourceId:
+          type: integer
+          nullable: true
+          description: 關聯的業務資源 ID
+        cashAccountId:
+          type: integer
+          nullable: true
+          description: 零用金帳戶 ID（預留欄位，income 模組啟用後生效；目前不處理）
+        createdBy:
+          type: integer
+          description: 記錄者 userId
+        createdAt:
+          type: string
+          format: date-time
+          description: 建立時間（RFC3339）
+
+    AccountingCreateRequest:
+      type: object
+      required: [accountingDate, income, expenditure]
+      properties:
+        titleId:
+          type: integer
+          nullable: true
+          description: 科目編號（選填，需為此物業適用的科目）
+        description:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: 科目說明（自訂文字）
+        income:
+          type: integer
+          minimum: 0
+          description: 收入金額（元）；income 與 expenditure 不可同時為非零值
+        expenditure:
+          type: integer
+          minimum: 0
+          description: 支出金額（元）；income 與 expenditure 不可同時為非零值
+        accountingDate:
+          type: string
+          format: date-time
+          description: 帳務日期時間（RFC3339）
+        paymentMethod:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: 付款方式（如「現金」）
+        counterparty:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: 交易對象（如房客姓名）
+        tag:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: 帳務標記（業務語意標籤）
+        code:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: 辨識碼（如 "{rentId}-{日期}"）
+        linkedResourceType:
+          type: string
+          nullable: true
+          enum: [rent, schedule]
+          description: 關聯的業務資源類型（需與 linkedResourceId 同時提供）
+        linkedResourceId:
+          type: integer
+          nullable: true
+          minimum: 1
+          description: 關聯的業務資源 ID（需與 linkedResourceType 同時提供）
+        cashAccountId:
+          type: integer
+          nullable: true
+          description: 零用金帳戶 ID（預留，目前不觸發副作用）
+
+    AccountingUpdateRequest:
+      type: object
+      required: [accountingDate, income, expenditure]
+      properties:
+        titleId:
+          type: integer
+          nullable: true
+          description: 科目編號
+        description:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: 科目說明
+        income:
+          type: integer
+          minimum: 0
+          description: 收入金額（元）；income 與 expenditure 不可同時為非零值
+        expenditure:
+          type: integer
+          minimum: 0
+          description: 支出金額（元）；income 與 expenditure 不可同時為非零值
+        accountingDate:
+          type: string
+          format: date-time
+          description: 帳務日期時間（RFC3339）
+        paymentMethod:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: 付款方式
+        counterparty:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: 交易對象
+        tag:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: 帳務標記
+        code:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: 辨識碼
+        linkedResourceType:
+          type: string
+          nullable: true
+          enum: [rent, schedule]
+          description: 關聯的業務資源類型
+        linkedResourceId:
+          type: integer
+          nullable: true
+          minimum: 1
+          description: 關聯的業務資源 ID
+        cashAccountId:
+          type: integer
+          nullable: true
+          description: 零用金帳戶 ID（預留）
+
+    AccountingOverview:
+      type: object
+      description: 物業帳務總覽
+      required: [estateId, periodFrom, periodTo, previousBalance, periodIncome, periodExpenditure, periodBalance, totalBalance]
+      properties:
+        estateId:
+          type: integer
+        periodFrom:
+          type: string
+          format: date
+          description: 本期起始日（YYYY-MM-DD）
+        periodTo:
+          type: string
+          format: date
+          description: 本期結束日（YYYY-MM-DD）
+        previousBalance:
+          type: integer
+          description: 上月結餘（截至 periodFrom 前一天的累計結餘，收入-支出）
+        periodIncome:
+          type: integer
+          description: 本期收入合計（元）
+        periodExpenditure:
+          type: integer
+          description: 本期支出合計（元）
+        periodBalance:
+          type: integer
+          description: 本期結餘（periodIncome - periodExpenditure）
+        totalBalance:
+          type: integer
+          description: 累計結餘（previousBalance + periodBalance）
+        titleBreakdown:
+          type: array
+          description: 各科目加總明細（僅在未指定 titleId 時回傳）
+          items:
+            type: object
+            required: [titleId, titleName, kind, totalIncome, totalExpenditure]
+            properties:
+              titleId:
+                type: integer
+                nullable: true
+                description: 科目編號（null 表示未分類帳務）
+              titleName:
+                type: string
+                nullable: true
+                description: 科目名稱（null 表示未分類）
+              kind:
+                type: string
+                enum: [expense, income]
+                nullable: true
+              totalIncome:
+                type: integer
+                description: 本期收入小計（元）
+              totalExpenditure:
+                type: integer
+                description: 本期支出小計（元）
+
+    # ── 群組（Groups）─────────────────────────────
+
+    GroupSummary:
+      type: object
+      description: 群組摘要（用於清單）
+      required: [groupId, name, groupType, memberCount]
+      properties:
+        groupId:
+          type: integer
+          description: 群組流水號
+        name:
+          type: string
+          description: 群組名稱（最長 50 字元）
+        description:
+          type: string
+          nullable: true
+          description: 群組說明
+        groupType:
+          type: string
+          enum: [Global]
+          description: 群組類型（新系統固定為 Global；Anonymous 類型不對外列出）
+        memberCount:
+          type: integer
+          description: 群組成員數量
+
+    GroupDetail:
+      type: object
+      description: 群組詳情（含分頁成員清單）
+      required: [groupId, name, groupType, memberCount, members]
+      properties:
+        groupId:
+          type: integer
+          description: 群組流水號
+        name:
+          type: string
+          description: 群組名稱（最長 50 字元）
+        description:
+          type: string
+          nullable: true
+          description: 群組說明
+        groupType:
+          type: string
+          enum: [Global]
+          description: 群組類型（新系統固定為 Global）
+        memberCount:
+          type: integer
+          description: 群組成員總數
+        members:
+          allOf:
+            - $ref: '#/components/schemas/PaginatedResponse'
+            - type: object
+              properties:
+                items:
+                  type: array
+                  description: 本頁成員清單
+                  items:
+                    $ref: '#/components/schemas/UserSummary'
+
+    GroupCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: 群組名稱（需唯一）
+        description:
+          type: string
+          description: 群組說明（選填）
+
+    GroupUpdateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: 群組名稱（需唯一）
+        description:
+          type: string
+          nullable: true
+          description: 群組說明（選填；傳入 null 清空說明）
+
+    # ── 附件（Attachments）────────────────────────
+
+    AttachmentItem:
+      type: object
+      required: [attachmentId, fileName, mimeType, fileSize, storageObjectPath, sortOrder, uploadedAt, uploadedBy]
+      properties:
+        attachmentId:
+          type: integer
+          description: 附件流水號
+        fileName:
+          type: string
+          description: 顯示用檔案名稱（原始上傳檔名）
+        mimeType:
+          type: string
+          description: MIME 類型（如 image/jpeg、application/pdf）
+        fileSize:
+          type: integer
+          description: 檔案大小（bytes）
+        storageObjectPath:
+          type: string
+          description: Cloud Storage 物件路徑
+        description:
+          type: string
+          nullable: true
+          description: 附件說明（選填）
+        sortOrder:
+          type: integer
+          description: 排序值（同一資源下的附件排序）
+        downloadCount:
+          type: integer
+          description: 下載次數
+        tag:
+          type: string
+          nullable: true
+          description: 額外標記（保留給業務邏輯使用）
+        uploadedAt:
+          type: string
+          format: date-time
+          description: 上傳時間（RFC3339）
+        uploadedBy:
+          type: integer
+          description: 上傳者的 userId
+
+    AttachmentUploadRequest:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: 上傳的檔案（multipart/form-data）
+        description:
+          type: string
+          description: 附件說明（選填，最長 500 字元）
+        tag:
+          type: string
+          description: 額外標記（選填）
+
+    AttachmentUpdateRequest:
+      type: object
+      properties:
+        description:
+          type: string
+          nullable: true
+          description: 附件說明（傳入 null 清空說明）
+
+    AttachmentSortRequest:
+      type: object
+      required: [attachmentIds]
+      properties:
+        attachmentIds:
+          type: array
+          description: 依照新排序排列的附件 ID 清單（需包含該資源下所有附件 ID）
+          items:
+            type: integer
+          minItems: 1
+
+  # ── 統一 Response ────────────────────────────
+
+  responses:
+    Unauthorized:
+      description: 未認證或 Token 無效
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            auth_required:
+              value:
+                code: AUTH_REQUIRED
+                message: 請提供有效的 JWT Token
+            token_expired:
+              value:
+                code: TOKEN_EXPIRED
+                message: JWT Token 已過期
+
+    Forbidden:
+      description: 已認證但無操作權限
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: FORBIDDEN
+            message: 您無此操作的權限
+
+    EstateAccessDenied:
+      description: 無權存取該物業
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: ESTATE_ACCESS_DENIED
+            message: 您無權存取此物業
+
+    ValidationError:
+      description: 欄位驗證失敗
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: VALIDATION_ERROR
+            message: 欄位驗證失敗
+            details:
+              - field: ownerEmail
+                message: 不是有效的 Email 格式
+
+    EstateNotFound:
+      description: 物業不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: ESTATE_NOT_FOUND
+            message: 找不到指定的物業
+
+    RoomNotFound:
+      description: 房間不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: ROOM_NOT_FOUND
+            message: 找不到指定的房間
+
+    UserNotFound:
+      description: 使用者不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: USER_NOT_FOUND
+            message: 找不到指定的使用者
+    CannotDeleteHasRoomsOrRents:
+      description: 物業下有房間或租約，無法刪除
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: CANNOT_DELETE_HAS_ROOMS_OR_RENTS
+            message: 物業下尚有房間/租約，請先刪除所有房間/租約後再刪除物業
+
+    RentNotFound:
+      description: 租約不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: RENT_NOT_FOUND
+            message: 找不到指定的租約
+
+    TenantNotFound:
+      description: 房客不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: TENANT_NOT_FOUND
+            message: 找不到指定的房客
+
+    RentAlreadyTerminated:
+      description: 租約已退租，不可修改
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: RENT_ALREADY_TERMINATED
+            message: 此租約已完成退租，不可再修改
+
+    CannotDeleteHasAccounting:
+      description: 存在關聯帳務，刪除被擋
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: CANNOT_DELETE_HAS_ACCOUNTING
+            message: 此租約已有帳務記錄，無法直接刪除
+
+    ScheduleNotFound:
+      description: 日誌不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: SCHEDULE_NOT_FOUND
+            message: 找不到指定的日誌記錄
+
+    AccountingNotFound:
+      description: 帳務記錄不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: ACCOUNTING_NOT_FOUND
+            message: 找不到指定的帳務記錄
+
+    GroupNotFound:
+      description: 群組不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: GROUP_NOT_FOUND
+            message: 找不到指定的群組
+
+    UsernameAlreadyExists:
+      description: 登入帳號已被使用
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: USERNAME_ALREADY_EXISTS
+            message: 此登入帳號已存在，請使用其他帳號名稱
+
+    GroupHasMembers:
+      description: 群組尚有成員，無法刪除
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: GROUP_HAS_MEMBERS
+            message: 此群組尚有成員，請先移除所有成員後再刪除群組
+
+    GroupNameAlreadyExists:
+      description: 群組名稱已被使用
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: GROUP_NAME_ALREADY_EXISTS
+            message: 此群組名稱已存在，請使用其他名稱
+
+    AttachmentNotFound:
+      description: 附件不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: ATTACHMENT_NOT_FOUND
+            message: 找不到指定的附件
+
+    CurrentPasswordIncorrect:
+      description: 現有密碼驗證失敗
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: CURRENT_PASSWORD_INCORRECT
+            message: 現有密碼不正確
+

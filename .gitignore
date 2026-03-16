@@ -1,0 +1,23 @@
+# Environment
+.env
+.env.local
+
+# Binary
+server
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# AI / Agent
+.claude/
+CLAUDE.md
+AGENTS.md
+docs/analysis/
+docs/spec/
+docs/migration/
+docs/info/
+migration_input/

@@ -1,0 +1,352 @@
+erDiagram
+
+%% ============================================================
+%% 模組一：物業管理（Estate）
+%% 設計日期：2026-03-15
+%% ============================================================
+
+    estates {
+        bigserial id PK
+        varchar_255 title
+        varchar_255 short_title
+        bigint owner_user_id FK
+        varchar_255 owner_name
+        varchar_255 owner_email
+        varchar_255 address
+        varchar_255 phone
+        varchar_255 website
+        varchar_255 facebook
+        text note
+        jsonb facilities
+        numeric_6_2 electricity_rate
+        varchar_20 electricity_billing_cycle
+        jsonb zones
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    rooms {
+        bigserial id PK
+        bigint estate_id FK
+        varchar_255 room_number
+        varchar_255 storey
+        varchar_255 room_type
+        numeric_7_2 size_sqm
+        jsonb facilities
+        jsonb prices
+        text note
+        integer sort_order
+        varchar_255 zone
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    estate_member_profiles {
+        bigint user_id PK
+        varchar_255 unit
+        varchar_255 title
+        varchar_7 calendar_text_color
+        varchar_7 calendar_bg_color
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    estate_member_links {
+        bigserial id PK
+        bigint estate_id FK
+        bigint user_id FK
+        varchar_20 member_level
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    estate_facility_memos {
+        bigserial id PK
+        bigint estate_id FK
+        varchar_255 facility_name
+        text memo
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    users {
+        bigserial id PK
+        varchar_25 username UK
+        varchar_60 name
+        varchar_60 email
+        varchar_255 password_hash
+        varchar_100 occupation
+        text bio
+        varchar_255 avatar_path
+        boolean is_enabled
+        timestamptz last_login_at
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    %% ── 關聯線 ──────────────────────────────────────────────
+
+    estates ||--o{ rooms : "has"
+    estates ||--o{ estate_member_links : "has members"
+    estates ||--o{ estate_facility_memos : "has facility memos"
+    estates }o--o| users : "owned by"
+
+    users ||--o{ estate_member_links : "linked to estates"
+    users ||--o| estate_member_profiles : "has profile"
+
+%% ============================================================
+%% 模組二：租賃管理（Estate Rent）
+%% 設計日期：2026-03-15
+%% ============================================================
+
+    tenants {
+        bigserial id PK
+        varchar_255 name
+        date birthday
+        varchar_255 national_id
+        varchar_255 registered_address
+        varchar_255 phone
+        varchar_255 occupation
+        varchar_255 emergency_contact
+        varchar_255 email
+        text note
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    rents {
+        bigserial id PK
+        bigint estate_id FK
+        bigint room_id FK
+        date start_date
+        date end_date
+        date early_move_in_date
+        numeric_10_0 deposit
+        varchar_20 payment_method
+        numeric_10_1 initial_electric_reading
+        varchar_20 renewal_status
+        text note
+        varchar_255 pet_info
+        varchar_20 status
+        jsonb termination_info
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    rent_tenant_links {
+        bigserial id PK
+        bigint rent_id FK
+        bigint tenant_id FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    %% ── 關聯線 ──────────────────────────────────────────────
+
+    estates ||--o{ rents : "has rents"
+    rooms ||--o{ rents : "has rents"
+    rents ||--o{ rent_tenant_links : "links to tenants"
+    tenants ||--o{ rent_tenant_links : "linked to rents"
+
+%% ============================================================
+%% 模組三：電費管理（Estate Electric）
+%% 設計日期：2026-03-15
+%% ============================================================
+
+    electric_readings {
+        bigserial id PK
+        bigint estate_id FK
+        bigint room_id FK
+        smallint year
+        smallint month
+        numeric_10_1 degrees
+        bigint recorded_by_user_id FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    %% ── 關聯線 ──────────────────────────────────────────────
+
+    estates ||--o{ electric_readings : "has readings"
+    rooms ||--o{ electric_readings : "has readings"
+
+%% ============================================================
+%% 模組四：日誌/排程管理（Estate Schedule）
+%% 設計日期：2026-03-15
+%% ============================================================
+
+    schedules {
+        bigserial id PK
+        bigint estate_id FK
+        bigint room_id FK
+        timestamptz scheduled_at
+        varchar_255 kind
+        varchar_255 status
+        varchar_20 status_color
+        text content
+        bigint reporter_user_id FK
+        bigint assist_user_id
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    schedule_replies {
+        bigserial id PK
+        bigint schedule_id FK
+        text content
+        bigint author_user_id FK
+        timestamptz replied_at
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    %% ── 關聯線 ──────────────────────────────────────────────
+
+    estates ||--o{ schedules : "has schedules"
+    rooms |o--o{ schedules : "linked to"
+    users ||--o{ schedules : "reports"
+    schedules ||--o{ schedule_replies : "has replies"
+    users ||--o{ schedule_replies : "authors"
+
+%% ============================================================
+%% 模組五：帳務管理（Accounting）
+%% 設計日期：2026-03-15
+%% ============================================================
+
+    accounting_titles {
+        bigserial id PK
+        integer title_id UK
+        varchar_10 kind
+        varchar_255 title
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    accountings {
+        bigserial id PK
+        bigint estate_id FK
+        integer title_id FK
+        varchar_255 title_name
+        varchar_255 description
+        integer income
+        integer expenditure
+        timestamptz accounting_date
+        varchar_255 payment_method
+        varchar_255 counterparty
+        varchar_255 tag
+        varchar_255 code
+        varchar_50 linked_resource_type
+        bigint linked_resource_id
+        integer cash_account_id
+        bigint created_by_user_id FK
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    %% ── 關聯線 ──────────────────────────────────────────────
+
+    estates ||--o{ accountings : "has accountings"
+    accounting_titles |o--o{ accountings : "categorizes"
+    users ||--o{ accountings : "created by"
+
+    %% 跨模組關聯（Soft Reference，不建立 FK，由應用層維護）
+    %% rents    ||--o{ accountings : "linked_resource_type=rent"
+    %% schedules ||--o{ accountings : "linked_resource_type=schedule"
+
+%% ============================================================
+%% 模組六：會員管理（Users）
+%% 設計日期：2026-03-15
+%% ============================================================
+
+    %% users 表為全域資源（無 estate_id），已在模組一以 placeholder 定義
+    %% 模組六將 users 欄位展開為完整定義（已於模組一 users 區塊更新）
+
+    %% ── 關聯線 ──────────────────────────────────────────────
+    %% users 已透過模組一至五的關聯線與各模組建立關係：
+    %%   users }o--o| estates        (模組一，owner_user_id)
+    %%   users ||--o{ estate_member_links  (模組一)
+    %%   users ||--o| estate_member_profiles (模組一)
+    %%   users ||--o{ schedules      (模組四，reporter_user_id)
+    %%   users ||--o{ schedule_replies (模組四，author_user_id)
+    %%   users ||--o{ accountings    (模組五，created_by_user_id)
+    %%
+    %% 模組七（Groups）將新增：
+    %%   users ||--o{ user_group_links
+
+%% ============================================================
+%% 模組七：群組/權限管理（Groups）
+%% 設計日期：2026-03-15
+%% 廢棄：xx_group_permission（XOOPS 框架機制，新系統不移植）
+%% ============================================================
+
+    groups {
+        bigserial id PK
+        varchar_50 name UK
+        text description
+        varchar_20 group_type
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    user_group_links {
+        bigserial id PK
+        bigint user_id FK
+        bigint group_id FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    %% ── 關聯線 ──────────────────────────────────────────────
+
+    users ||--o{ user_group_links : "belongs to groups"
+    groups ||--o{ user_group_links : "has members"
+
+%% ============================================================
+%% 模組八：檔案管理（Attachments）
+%% 設計日期：2026-03-15
+%% 舊系統對應：xx_estate_files_center（polymorphic col_name/col_sn）
+%% 新系統設計：單一 attachments 表，resource_type ENUM + resource_id 明確關聯
+%% ============================================================
+
+    attachments {
+        bigserial id PK
+        bigint estate_id FK
+        attachment_resource_type resource_type
+        bigint resource_id
+        varchar_512 file_name
+        varchar_255 mime_type
+        bigint file_size
+        varchar_1024 storage_object_path
+        text description
+        integer sort_order
+        integer download_count
+        varchar_255 tag
+        bigint uploaded_by_user_id FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    %% ── 關聯線 ──────────────────────────────────────────────
+
+    %% estate_id 冗餘 FK（多租戶隔離）
+    estates ||--o{ attachments : "owns (via estate_id)"
+
+    %% resource_id 依 resource_type 指向不同資源表
+    %% （polymorphic 關聯，DB 層無法定義 FK，由應用層保證一致性）
+    rooms ||--o{ attachments : "resource_type=room"
+    estate_facility_memos ||--o{ attachments : "resource_type=facility"
+    rents ||--o{ attachments : "resource_type=rent"
+    schedules ||--o{ attachments : "resource_type=schedule"
+    schedule_replies ||--o{ attachments : "resource_type=schedule_reply"
+
+    %% 上傳者關聯
+    users ||--o{ attachments : "uploaded_by_user_id"
