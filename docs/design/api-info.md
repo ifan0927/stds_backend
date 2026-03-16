@@ -7,7 +7,7 @@
 ## POST /v1/estates
 
 ### 業務邏輯步驟
-1. 驗證請求者具備系統管理員角色（`estate_adm`）
+1. 驗證請求者具備系統管理員角色（`role=admin`）
 2. 驗證必填欄位（title、shortTitle、ownerName、ownerEmail、electricityRate、electricityBillingCycle）
 3. 驗證 ownerEmail 格式合法
 4. 查詢資料庫是否已有相同 email 的使用者帳號
@@ -804,10 +804,10 @@
 2. 查詢 users 資料表，依 username 查找使用者；若不存在回傳 401 `INVALID_CREDENTIALS`
 3. 驗證使用者帳號為啟用狀態（isEnabled=true）；若停用回傳 401 `INVALID_CREDENTIALS`（不揭示帳號停用資訊）
 4. 以 bcrypt 驗證 password 是否與資料庫中的 hash 相符；若不符回傳 401 `INVALID_CREDENTIALS`
-5. 查詢使用者所屬群組清單（用於 JWT payload 中的 roles/groups 宣告）
-6. 產生 JWT，payload 包含：userId、username、groups（群組 ID 清單）、estateIds（授權範圍，若為業主則包含其物業 ID）、exp（過期時間）
+5. 查詢使用者被授權的物業 ID 清單（透過 estate_member_links WHERE user_id = ?，用於 JWT payload estateIds）
+6. 產生 JWT，payload 包含：sub（userId）、username、role（系統層角色 admin/user）、estateIds（授權的物業 ID 清單）、exp（到期時間，18h 後）、iat（簽發時間）
 7. 更新 users 資料表的 lastLoginAt 為當下時間
-8. 回傳 200 + JWT token + 過期時間 + 使用者詳情
+8. 回傳 200 + `access_token`（JWT）+ `expiresAt`（過期時間）+ `user`（使用者詳情）
 
 ### Side Effects
 - Email 通知：無

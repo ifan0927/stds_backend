@@ -2141,7 +2141,7 @@ paths:
               $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: 登入成功，回傳 JWT token
+          description: 登入成功，回傳 JWT access_token
           content:
             application/json:
               schema:
@@ -5468,7 +5468,7 @@ components:
     UserDetail:
       type: object
       description: 使用者完整資料（不含密碼）
-      required: [userId, username, isEnabled]
+      required: [userId, username, role, isEnabled]
       properties:
         userId:
           type: integer
@@ -5483,6 +5483,13 @@ components:
           type: string
           format: email
           description: Email
+        role:
+          type: string
+          enum: [admin, user]
+          description: |
+            系統層角色。
+            - `admin`：系統管理員，可管理物業、使用者、群組
+            - `user`：一般使用者，只能存取被授權的物業
         occupation:
           type: string
           description: 職業
@@ -5541,6 +5548,11 @@ components:
           type: string
           minLength: 6
           description: 初始密碼（服務端以 bcrypt 儲存，永不在 response 出現）
+        role:
+          type: string
+          enum: [admin, user]
+          default: user
+          description: 系統層角色（選填，預設為 user）
         occupation:
           type: string
           maxLength: 100
@@ -5572,6 +5584,10 @@ components:
           type: string
           minLength: 6
           description: 新密碼（選填，不提供則不更改密碼；以 bcrypt 儲存）
+        role:
+          type: string
+          enum: [admin, user]
+          description: 系統層角色（選填，不提供則不更改）
         occupation:
           type: string
           maxLength: 100
@@ -5703,15 +5719,15 @@ components:
 
     LoginResponse:
       type: object
-      required: [token, expiresAt, user]
+      required: [access_token, expiresAt, user]
       properties:
-        token:
+        access_token:
           type: string
-          description: JWT token（Bearer token，用於後續 Authorization header）
+          description: JWT access token（Bearer token，用於後續 Authorization header）
         expiresAt:
           type: string
           format: date-time
-          description: token 過期時間（RFC3339）
+          description: access_token 過期時間（RFC3339）
         user:
           $ref: '#/components/schemas/UserDetail'
 

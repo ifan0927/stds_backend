@@ -922,6 +922,7 @@
 | occupation | VARCHAR(100) | NULL | — | 職業。對應舊系統 `user_occ`。對應 API: `occupation` |
 | bio | TEXT | NULL | — | 個人簡介。對應舊系統 `bio`（tinytext，升級為 TEXT）。對應 API: `bio` |
 | avatar_path | VARCHAR(255) | NULL | — | 大頭貼在 Cloud Storage 的物件路徑（metadata only，實際檔案存 GCS）。對應舊系統 `user_avatar`（僅存檔名如 'blank.gif'） |
+| role | VARCHAR(20) | NOT NULL | 'user' | 系統層角色。CHECK 約束值：`admin`（系統管理員，可管理物業/使用者/群組）、`user`（一般使用者，只能存取被授權物業）。對應 JWT claims: `role`。對應 API: `role` |
 | is_enabled | BOOLEAN | NOT NULL | TRUE | 帳號啟用狀態（TRUE=啟用，FALSE=停用）。對應舊系統 `level` tinyint(3)（1=啟用，0=停用），語意化重新命名。對應 API: `isEnabled` |
 | last_login_at | TIMESTAMPTZ | NULL | — | 最後登入時間（未曾登入時為 NULL）。對應舊系統 `last_login` int Unix timestamp（轉換為 TIMESTAMPTZ）。對應 API: `lastLoginAt` |
 | created_at | TIMESTAMPTZ | NOT NULL | now() | 帳號建立時間。對應舊系統 `user_regdate` int Unix timestamp（轉換為 TIMESTAMPTZ）。對應 API: `createdAt` |
@@ -940,7 +941,9 @@
 
 5. **user_avatar 的 NOT NULL 預設值取消**：舊系統強制 `NOT NULL DEFAULT 'blank.gif'`，新系統以 NULL 表示「未設定大頭貼」，由應用層決定預設顯示邏輯，DB 不強制預設圖。
 
-6. **groups 關聯**：API `UserDetail.groups` 陣列透過 `user_group_links` 中間表管理（模組七設計），`users` 表本身無群組欄位。
+6. **role 欄位（新增）**：新系統存取控制分兩層：系統層（`users.role`）+ 物業層（`estate_member_links.member_level`）。`role = 'admin'` 的使用者可執行全系統管理操作（新增/刪除物業、管理使用者與群組）；`role = 'user'` 只能存取被授權的物業。此欄位同步放入 JWT claims 供 middleware 快速判斷，不需每次查 DB。舊系統無此概念（透過 XOOPS `group_type` 判斷），新系統明確化為 DB 欄位。
+
+7. **groups 關聯**：API `UserDetail.groups` 陣列透過 `user_group_links` 中間表管理（模組七設計），`users` 表本身無群組欄位。
 
 7. **排除欄位清單**：下列舊系統欄位確認排除——`url`、`user_icq`、`user_aim`、`user_yim`、`user_msnm`（廢棄通訊軟體）、`posts`、`attachsig`、`rank`、`theme`（XOOPS 原生）、`umode`、`uorder`、`notify_method`、`notify_mode`、`user_mailok`、`user_sig`、`user_viewemail`、`user_from`（無業務用途）、`timezone_offset`（新系統統一 UTC）、`actkey`（借用欄位，改由 estate_member_links 管理）、`user_intrest`（借用欄位，廢棄）。
 
@@ -948,6 +951,7 @@
 - `PRIMARY KEY (id)`
 - `UNIQUE INDEX idx_users_username (username)` -- 帳號唯一性約束，也是登入查詢主要條件
 - `INDEX idx_users_email (email)` -- 支援 email 模糊搜尋（`GET /v1/users?email=...`）
+- `INDEX idx_users_role (role)` -- 支援依系統角色過濾（`GET /v1/users?role=admin`）
 - `INDEX idx_users_is_enabled (is_enabled)` -- 支援依啟用狀態過濾（`GET /v1/users?isEnabled=...`）
 - `INDEX idx_users_deleted_at (deleted_at)` -- 軟刪除查詢
 
@@ -955,11 +959,12 @@
 - 此表為全系統 FK 根源，本表無對外 FK。
 
 **CHECK 約束：**
-- 無額外 CHECK 約束（username 長度由應用層驗證）
+- `CHECK (role IN ('admin', 'user'))`
 
 **舊系統對應：**
 - 對應舊表：`xx_users`
 - 欄位重命名：`uid` → `id`、`uname` → `username`、`pass` → `password_hash`、`user_occ` → `occupation`、`user_avatar` → `avatar_path`、`user_regdate`（int unix ts）→ `created_at`（TIMESTAMPTZ）、`last_login`（int unix ts）→ `last_login_at`（TIMESTAMPTZ）、`level`（tinyint 0/1）→ `is_enabled`（BOOLEAN）
+- 新增欄位：`role VARCHAR(20) NOT NULL DEFAULT 'user'`（舊系統無此欄位，由 XOOPS 群組判斷身份，新系統改為明確的 role 欄位）
 - 排除欄位：`url`、`user_icq`、`user_aim`、`user_yim`、`user_msnm`、`posts`、`attachsig`、`rank`、`theme`、`umode`、`uorder`、`notify_method`、`notify_mode`、`user_mailok`、`user_sig`、`user_viewemail`、`user_from`、`timezone_offset`、`actkey`（借用欄位）、`user_intrest`（借用欄位）
 
 ---
@@ -974,25 +979,27 @@
 | 4 | email（UserDetail） | users.email | ✅ |
 | 5 | occupation（UserDetail） | users.occupation | ✅ |
 | 6 | bio（UserDetail） | users.bio | ✅ |
-| 7 | isEnabled（UserDetail） | users.is_enabled | ✅ |
-| 8 | lastLoginAt（UserDetail） | users.last_login_at | ✅ |
-| 9 | createdAt（UserDetail） | users.created_at | ✅ |
-| 10 | groups（UserDetail，陣列） | ⏸ 透過 user_group_links 關聯表（模組七設計） | ⏸ |
-| 11 | password（UserCreateRequest，明文輸入） | users.password_hash（bcrypt 儲存） | ✅ |
-| 12 | groupIds（UserCreateRequest/UserUpdateRequest） | ⏸ 操作 user_group_links，無 users 表欄位 | ⏸ |
-| 13 | field=isEnabled（BatchUpdateFieldRequest） | users.is_enabled | ✅ |
-| 14 | field=occupation（BatchUpdateFieldRequest） | users.occupation | ✅ |
-| 15 | field=bio（BatchUpdateFieldRequest） | users.bio | ✅ |
-| 16 | token（LoginResponse） | ⏸ JWT 由應用層生成，不儲存 DB | ⏸ |
-| 17 | expiresAt（LoginResponse） | ⏸ JWT payload，不儲存 DB | ⏸ |
-| 18 | username（UsernameCheckResponse 查詢） | users.username（UNIQUE INDEX 支援查詢） | ✅ |
-| 19 | exists（UsernameCheckResponse） | ⏸ 應用層查詢結果，非 DB 欄位 | ⏸ |
+| 7 | role（UserDetail） | users.role | ✅ |
+| 8 | isEnabled（UserDetail） | users.is_enabled | ✅ |
+| 9 | lastLoginAt（UserDetail） | users.last_login_at | ✅ |
+| 10 | createdAt（UserDetail） | users.created_at | ✅ |
+| 11 | groups（UserDetail，陣列） | ⏸ 透過 user_group_links 關聯表（模組七設計） | ⏸ |
+| 12 | password（UserCreateRequest，明文輸入） | users.password_hash（bcrypt 儲存） | ✅ |
+| 13 | role（UserCreateRequest / UserUpdateRequest） | users.role | ✅ |
+| 14 | groupIds（UserCreateRequest/UserUpdateRequest） | ⏸ 操作 user_group_links，無 users 表欄位 | ⏸ |
+| 15 | field=isEnabled（BatchUpdateFieldRequest） | users.is_enabled | ✅ |
+| 16 | field=occupation（BatchUpdateFieldRequest） | users.occupation | ✅ |
+| 17 | field=bio（BatchUpdateFieldRequest） | users.bio | ✅ |
+| 18 | access_token（LoginResponse） | ⏸ JWT 由應用層生成，不儲存 DB | ⏸ |
+| 19 | expiresAt（LoginResponse） | ⏸ JWT payload，不儲存 DB | ⏸ |
+| 20 | username（UsernameCheckResponse 查詢） | users.username（UNIQUE INDEX 支援查詢） | ✅ |
+| 21 | exists（UsernameCheckResponse） | ⏸ 應用層查詢結果，非 DB 欄位 | ⏸ |
 
 ---
 
 > 注意：`users` 表為全域資源，不含 `estate_id`，不屬於多租戶隔離範圍。
 > 注意：群組關聯（`groups` 陣列）由模組七的 `user_group_links` 中間表管理，模組六不重複設計。
-> 注意：JWT token 及其過期時間（`expiresAt`）為應用層邏輯，不儲存於 DB；若未來需要 token 撤銷（revocation），可額外設計 `refresh_tokens` 表，但目前 API 設計不包含此需求。
+> 注意：JWT `access_token` 及其過期時間（`expiresAt`）為應用層邏輯，不儲存於 DB；若未來需要 token 撤銷（revocation），可額外設計 `refresh_tokens` 表，但目前 API 設計不包含此需求。
 
 ---
 

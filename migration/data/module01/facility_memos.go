@@ -19,6 +19,7 @@ type eavRow struct {
 }
 
 // MigrateFacilityMemos reads 01_estate_data_center.json (EAV) and inserts into estate_facility_memos.
+// Legacy data uses col_sn as the estate identifier; col_id is blank in the provided export.
 // Groups by (estate_id, col_name), sorts by (data_sort, mid), joins as "{data_name}：{data_value}".
 func MigrateFacilityMemos(ctx context.Context, db *pgxpool.Pool, inputDir string, dryRun bool) error {
 	records, err := shared.ReadJSONL(filepath.Join(inputDir, "01_estate_data_center.json"))
@@ -51,17 +52,17 @@ func MigrateFacilityMemos(ctx context.Context, db *pgxpool.Pool, inputDir string
 
 	skipped := 0
 	for _, r := range records {
-		estateID := shared.Int64Val(r, "col_id")
+		estateID := shared.Int64Val(r, "col_sn")
 		facilityName := strings.TrimSpace(shared.StringVal(r, "col_name"))
 		mid := shared.Int64Val(r, "mid")
 
 		if !dryRun && !validEstates[estateID] {
-			shared.Logger.Warn("skip facility_memo: estate not found", "col_id", estateID, "mid", mid)
+			shared.Logger.Warn("skip facility_memo: estate not found", "estate_id", estateID, "mid", mid)
 			skipped++
 			continue
 		}
 		if facilityName == "" {
-			shared.Logger.Warn("skip facility_memo: empty col_name", "col_id", estateID, "mid", mid)
+			shared.Logger.Warn("skip facility_memo: empty col_name", "estate_id", estateID, "mid", mid)
 			skipped++
 			continue
 		}

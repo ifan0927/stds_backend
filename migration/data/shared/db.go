@@ -9,9 +9,9 @@ import (
 )
 
 func NewDB(ctx context.Context) (*pgxpool.Pool, error) {
-	dsn := os.Getenv("DATABASE_URL")
+	dsn := os.Getenv("STDS_DB_URL")
 	if dsn == "" {
-		return nil, fmt.Errorf("DATABASE_URL is not set")
+		return nil, fmt.Errorf("STDS_DB_URL is not set")
 	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {

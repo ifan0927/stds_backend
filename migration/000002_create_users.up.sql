@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
     occupation     VARCHAR(100),
     bio            TEXT,
     avatar_path    VARCHAR(255),
+    role           VARCHAR(20)   NOT NULL DEFAULT 'user',
     is_enabled     BOOLEAN       NOT NULL DEFAULT TRUE,
     last_login_at  TIMESTAMPTZ,
     created_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
@@ -16,5 +17,10 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username   ON users (username);
 CREATE        INDEX IF NOT EXISTS idx_users_email      ON users (email);
+CREATE        INDEX IF NOT EXISTS idx_users_role       ON users (role);
 CREATE        INDEX IF NOT EXISTS idx_users_is_enabled ON users (is_enabled);
 CREATE        INDEX IF NOT EXISTS idx_users_deleted_at ON users (deleted_at);
+
+ALTER TABLE users
+    ADD CONSTRAINT chk_users_role
+    CHECK (role IN ('admin', 'user'));

@@ -53,11 +53,11 @@ migration/        ← golang-migrate SQL 檔案
 
 | 項目 | 實作方式 | 狀態 |
 |------|---------|------|
-| Health Check | `GET /healthz` | 待實作 |
-| Graceful Shutdown | SIGTERM → drain → exit | 待實作 |
-| DB 連線 | Cloud SQL unix socket / Auth Proxy | 待實作 |
+| Health Check | `GET /healthz` | 已實作 |
+| Graceful Shutdown | SIGTERM → drain → exit | 已實作 |
+| DB 連線 | Cloud SQL unix socket / Auth Proxy | 已實作 |
 | Secrets | Secret Manager | 待實作 |
-| Logging | slog JSON → Cloud Logging | 待實作 |
+| Logging | Gin middleware + `slog` JSON + `X-Cloud-Trace-Context` | 已建立基礎 middleware |
 | Container | non-root、distroless/alpine | 待實作 |
 
 ---
@@ -68,7 +68,11 @@ migration/        ← golang-migrate SQL 檔案
 
 ### Error Handling
 
-_待 Phase 2 / 第一個模組完成後補充。_
+- 共用錯誤型別集中於 `internal/apperr`
+- `AppError` 區分 `HTTPStatus`、對外 `Code`/`Message`、對內原始 `Err`
+- validation 錯誤以 `[]ErrorDetail` 承載欄位明細，供 middleware 映射 API response
+- Gin error handler middleware 讀取 `c.Errors`，統一轉為 OpenAPI `ErrorResponse`
+- OpenAPI wrapper 的 request parse/bind error 對外只回固定訊息，不直接暴露 codegen/govalidator 內部錯誤細節
 
 ### DTO / Model Mapping
 
@@ -76,11 +80,26 @@ _待第一個模組完成後補充。_
 
 ### GORM Query 風格
 
-_待第一個模組完成後補充。_
+- 預設關閉 GORM 內建 logger，避免 SQL 與參數直接輸出到 stdout；需要慢查詢或額外觀測時再透過專案 logging 策略補上
+
+### Config / Bootstrap
+
+- application config 集中於 `internal/config`，由 `caarlos0/env` 自環境變數載入
+- DB 連線優先讀 `STDS_DB_URL`，否則以 `DB_*` 欄位組 DSN；Cloud SQL 使用 unix socket 組法
+- server entrypoint 統一由 `cmd/server/main.go` 負責 logger、DB、router、graceful shutdown wiring
+- OpenAPI generated routes 在模組尚未實作前，可先接 placeholder strict server，不直接在 `main.go` 留未接線 TODO
+- `config.Config` 實作 `slog.LogValuer`，避免 DSN / DB password 等敏感設定直接寫入 structured log
 
 ### Response 格式
 
-_待 Phase 2 Bootstrap 確認後補充。_
+- 錯誤回應統一使用 OpenAPI `ErrorResponse`
+- `details` 僅在 validation error 且有欄位明細時回傳
+
+### Logging
+
+- request logging 由最外層 Gin middleware 負責，確保 401/404 等請求也會留下 log
+- request ID 優先沿用 `X-Request-Id`，否則生成 UUID，並同步寫回 response header 與 gin context
+- request log 使用 `slog.Info` 輸出 structured JSON，欄位固定包含 request metadata 與 `X-Cloud-Trace-Context`
 
 ---
 
@@ -89,7 +108,7 @@ _待 Phase 2 Bootstrap 確認後補充。_
 | 模組 | 狀態 |
 |------|------|
 | Phase 1 Code Gen | ✅ 完成 |
-| Phase 2 Bootstrap | 進行中 |
+| Phase 2 Bootstrap | 進行中（logging / error middleware / config / db / main 基礎完成） |
 | Estate | 待開始 |
 | Estate Rent | 待開始 |
 | Estate Electric | 待開始 |

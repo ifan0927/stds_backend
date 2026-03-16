@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/ifan0927/stds-backend/migration/data/shared"
@@ -22,6 +21,11 @@ func MigrateUsers(ctx context.Context, db *pgxpool.Pool, inputDir string, dryRun
 		return fmt.Errorf("read 02_users.json: %w", err)
 	}
 
+	adminUserIDs, err := loadAdminUserIDs(inputDir)
+	if err != nil {
+		return err
+	}
+
 	sum := &shared.Summary{Table: "users", Total: len(records)}
 
 	for _, r := range records {
@@ -33,6 +37,10 @@ func MigrateUsers(ctx context.Context, db *pgxpool.Pool, inputDir string, dryRun
 		occupation := shared.NullableString(shared.StringVal(r, "user_occ"))
 		bio := shared.NullableString(shared.StringVal(r, "bio"))
 		avatarPath := shared.NullableString(shared.StringVal(r, "user_avatar"))
+		role := "user"
+		if adminUserIDs[id] {
+			role = "admin"
+		}
 
 		// level: '0' = disabled, anything else = enabled
 		isEnabled := shared.StringVal(r, "level") != "0"
@@ -52,7 +60,7 @@ func MigrateUsers(ctx context.Context, db *pgxpool.Pool, inputDir string, dryRun
 
 		if dryRun {
 			shared.Logger.Debug("dry-run: would insert user",
-				"user_id", id, "username", username, "is_enabled", isEnabled)
+				"user_id", id, "username", username, "role", role, "is_enabled", isEnabled)
 			sum.Inserted++
 			continue
 		}
@@ -60,16 +68,16 @@ func MigrateUsers(ctx context.Context, db *pgxpool.Pool, inputDir string, dryRun
 		_, err := db.Exec(ctx, `
 			INSERT INTO users (
 				id, username, name, email, password_hash,
-				occupation, bio, avatar_path, is_enabled,
+				occupation, bio, avatar_path, role, is_enabled,
 				last_login_at, created_at, updated_at, deleted_at
 			) VALUES (
 				$1, $2, $3, $4, $5,
-				$6, $7, $8, $9,
-				$10, $11, now(), NULL
+				$6, $7, $8, $9, $10,
+				$11, $12, now(), NULL
 			)
 			ON CONFLICT (id) DO NOTHING`,
 			id, username, name, email, passwordHash,
-			occupation, bio, avatarPath, isEnabled,
+			occupation, bio, avatarPath, role, isEnabled,
 			lastLoginAt, createdAt,
 		)
 		if err != nil {
@@ -92,5 +100,30 @@ func MigrateUsers(ctx context.Context, db *pgxpool.Pool, inputDir string, dryRun
 	return nil
 }
 
-// unused import guard
-var _ = strconv.Itoa
+func loadAdminUserIDs(inputDir string) (map[int64]bool, error) {
+	groups, err := shared.ReadJSONL(filepath.Join(inputDir, "02_groups.json"))
+	if err != nil {
+		return nil, fmt.Errorf("read 02_groups.json: %w", err)
+	}
+
+	adminGroupIDs := make(map[int64]bool)
+	for _, r := range groups {
+		if shared.StringVal(r, "group_type") == "Admin" {
+			adminGroupIDs[shared.Int64Val(r, "groupid")] = true
+		}
+	}
+
+	links, err := shared.ReadJSONL(filepath.Join(inputDir, "02_groups_users_link.json"))
+	if err != nil {
+		return nil, fmt.Errorf("read 02_groups_users_link.json: %w", err)
+	}
+
+	adminUserIDs := make(map[int64]bool)
+	for _, r := range links {
+		if adminGroupIDs[shared.Int64Val(r, "groupid")] {
+			adminUserIDs[shared.Int64Val(r, "uid")] = true
+		}
+	}
+
+	return adminUserIDs, nil
+}

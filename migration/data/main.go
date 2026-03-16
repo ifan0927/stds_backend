@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/ifan0927/stds-backend/migration/data/module01"
 	"github.com/ifan0927/stds-backend/migration/data/module02"
@@ -75,8 +76,17 @@ func runModule01(ctx context.Context, db *pgxpool.Pool, inputDir string, dryRun 
 }
 
 func runModule01Post(ctx context.Context, db *pgxpool.Pool, inputDir string, dryRun bool) {
-	must("member_profiles", module01.MigrateMemberProfiles(ctx, db, inputDir, dryRun))
-	must("member_links", module01.MigrateMemberLinks(ctx, db, inputDir, dryRun))
+	if !fileExists(filepath.Join(inputDir, "01_estate_mems.json")) {
+		slog.Warn("skip step: input file not found", "step", "member_profiles", "file", filepath.Join(inputDir, "01_estate_mems.json"))
+	} else {
+		must("member_profiles", module01.MigrateMemberProfiles(ctx, db, inputDir, dryRun))
+	}
+
+	if !fileExists(filepath.Join(inputDir, "01_estate_mem_link.json")) {
+		slog.Warn("skip step: input file not found", "step", "member_links", "file", filepath.Join(inputDir, "01_estate_mem_link.json"))
+	} else {
+		must("member_links", module01.MigrateMemberLinks(ctx, db, inputDir, dryRun))
+	}
 }
 
 func runModule02(ctx context.Context, db *pgxpool.Pool, inputDir string, dryRun bool) {
@@ -97,4 +107,12 @@ func must(step string, err error) {
 		os.Exit(1)
 	}
 	slog.Info("step done", "step", step)
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
 }

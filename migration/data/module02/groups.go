@@ -24,9 +24,18 @@ func MigrateGroups(ctx context.Context, db *pgxpool.Pool, inputDir string, dryRu
 		id := shared.Int64Val(r, "groupid")
 		name := shared.StringVal(r, "name")
 		description := shared.NullableString(shared.StringVal(r, "description"))
-		groupType := shared.StringVal(r, "group_type")
-		if groupType == "" {
+		groupTypeRaw := shared.StringVal(r, "group_type")
+
+		var groupType string
+		switch groupTypeRaw {
+		case "", "Admin", "User":
 			groupType = "Global"
+		case "Anonymous":
+			groupType = "Anonymous"
+		default:
+			shared.Logger.Error("unknown group_type, skipped", "group_id", id, "group_type", groupTypeRaw)
+			sum.Errors++
+			continue
 		}
 
 		if dryRun {
