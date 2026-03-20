@@ -8,6 +8,12 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	defaultMaxOpenConns    = 10
+	defaultMaxIdleConns    = 5
+	defaultConnMaxLifetime = 30 * time.Minute
+)
+
 // InitDB opens the primary PostgreSQL connection and applies the default pool settings.
 func InitDB(cfg config.DBconfig) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(cfg.DSN), &gorm.Config{})
@@ -20,9 +26,9 @@ func InitDB(cfg config.DBconfig) (*gorm.DB, error) {
 		return nil, err
 	}
 
-	sqlDB.SetMaxOpenConns(10)
-	sqlDB.SetMaxIdleConns(5)
-	sqlDB.SetConnMaxLifetime(30 * time.Minute)
+	sqlDB.SetMaxOpenConns(defaultMaxOpenConns)
+	sqlDB.SetMaxIdleConns(defaultMaxIdleConns)
+	sqlDB.SetConnMaxLifetime(defaultConnMaxLifetime)
 
 	return db, nil
 

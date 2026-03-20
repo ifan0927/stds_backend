@@ -1,18 +1,19 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/caarlos0/env/v11"
-	"github.com/gin-gonic/gin"
-	"github.com/ifan0927/stds-backend/internal/api"
-	"github.com/ifan0927/stds-backend/internal/apperr"
 	"github.com/ifan0927/stds-backend/internal/config"
 	"github.com/ifan0927/stds-backend/internal/db"
-	"github.com/ifan0927/stds-backend/internal/handler"
-	"github.com/ifan0927/stds-backend/internal/middleware"
 	"github.com/joho/godotenv"
 )
 
@@ -23,72 +24,57 @@ func main() {
 	if os.Getenv("APP_ENV") == "dev" {
 		err = godotenv.Load(".env")
 		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Error loading .env file")
+			_, _ = fmt.Fprintf(os.Stderr, "Error loading .env file: %s\n", err.Error())
 		}
 	}
-
 	cfg := config.Config{}
 	err = env.Parse(&cfg)
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Error parsing config")
+		_, _ = fmt.Fprintf(os.Stderr, "Error parsing config: %s\n", err.Error())
 		os.Exit(1)
 	}
 
-	// initial slog
-	var Loglevel slog.LevelVar
-	err = Loglevel.UnmarshalText([]byte(cfg.LogLevel))
+	// init logger
+	logger, err := initLogger(cfg)
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Error parsing log level")
+		_, _ = fmt.Fprintf(os.Stderr, "Error initializing logger: %s\n", err.Error())
 		os.Exit(1)
 	}
-	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: &Loglevel,
-	})
-	slog.SetDefault(slog.New(logHandler))
+	slog.SetDefault(logger)
 
 	// init database
 	gormDB, err := db.InitDB(cfg.DB)
 	if err != nil {
-		slog.Warn("Error initializing database")
+		_, _ = fmt.Fprintf(os.Stderr, "Error initializing database: %s\n", err.Error())
 		os.Exit(1)
 	}
 
-	// init route and middleware
-	r := gin.New()
-	r.Use(middleware.Logger())
-	r.Use(middleware.ErrorHandler())
-	r.Use(middleware.AuthMiddleware(cfg))
+	// init Router
+	r := initRouter(cfg, gormDB)
 
-	// health endpoint
-	r.GET("/healthz", func(c *gin.Context) {
-		sqlDB, err := gormDB.DB()
-		var appErr apperr.AppError
-		if err != nil {
-			appErr = apperr.NewInternalError("error connecting to database")
-			c.JSON(appErr.HTTPStatus, appErr)
-			return
-		}
-		err = sqlDB.Ping()
-		if err != nil {
-			appErr := apperr.NewInternalError("error pinging database")
-			c.JSON(appErr.HTTPStatus, appErr)
-			return
-		}
-		c.JSON(200, gin.H{
-			"status": "ok",
-		})
-	})
-
-	// all endpoint
-	server := handler.NewServer()
-
-	strictHandler := api.NewStrictHandler(server, nil)
-
-	api.RegisterHandlers(r, strictHandler)
-
-	err = r.Run(":" + cfg.Port)
-	if err != nil {
-		slog.Warn("Error starting server")
-		os.Exit(1)
+	// init server & graceful shutdown
+	srv := &http.Server{
+		Addr:    ":" + cfg.Port,
+		Handler: r,
 	}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			_, _ = fmt.Fprintf(os.Stderr, "Error starting server: %s\n", err.Error())
+			os.Exit(1)
+		}
+	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	<-ctx.Done()
+	shutdownCtx, cancel :=
+		context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("graceful shutdown failed", "err", err)
+	}
+	slog.Info("server shutdown")
+
 }
