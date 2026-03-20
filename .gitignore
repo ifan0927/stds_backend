@@ -3,7 +3,8 @@
 .env.local
 
 # Binary
-server
+/server
+
 
 # IDE
 .idea/

@@ -5,6 +5,8 @@ info:
   description: STDS 物業管理系統 RESTful API（Go + PostgreSQL + Cloud Run）
 
 servers:
+  - url: http://localhost:8080
+    description: Development
   - url: https://api.stds.example.com
     description: Production
 

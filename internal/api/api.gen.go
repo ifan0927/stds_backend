@@ -492,6 +492,60 @@ func (e RentUpdateRequestRenewalStatus) Valid() bool {
 	}
 }
 
+// Defines values for UserCreateRequestRole.
+const (
+	UserCreateRequestRoleAdmin UserCreateRequestRole = "admin"
+	UserCreateRequestRoleUser  UserCreateRequestRole = "user"
+)
+
+// Valid indicates whether the value is a known member of the UserCreateRequestRole enum.
+func (e UserCreateRequestRole) Valid() bool {
+	switch e {
+	case UserCreateRequestRoleAdmin:
+		return true
+	case UserCreateRequestRoleUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UserDetailRole.
+const (
+	UserDetailRoleAdmin UserDetailRole = "admin"
+	UserDetailRoleUser  UserDetailRole = "user"
+)
+
+// Valid indicates whether the value is a known member of the UserDetailRole enum.
+func (e UserDetailRole) Valid() bool {
+	switch e {
+	case UserDetailRoleAdmin:
+		return true
+	case UserDetailRoleUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UserUpdateRequestRole.
+const (
+	Admin UserUpdateRequestRole = "admin"
+	User  UserUpdateRequestRole = "user"
+)
+
+// Valid indicates whether the value is a known member of the UserUpdateRequestRole enum.
+func (e UserUpdateRequestRole) Valid() bool {
+	switch e {
+	case Admin:
+		return true
+	case User:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListAccountingsParamsLinkedResourceType.
 const (
 	ListAccountingsParamsLinkedResourceTypeRent     ListAccountingsParamsLinkedResourceType = "rent"
@@ -1230,11 +1284,11 @@ type LoginRequest struct {
 
 // LoginResponse defines model for LoginResponse.
 type LoginResponse struct {
-	// ExpiresAt token 過期時間（RFC3339）
-	ExpiresAt time.Time `json:"expiresAt"`
+	// AccessToken JWT access token（Bearer token，用於後續 Authorization header）
+	AccessToken string `json:"access_token"`
 
-	// Token JWT token（Bearer token，用於後續 Authorization header）
-	Token string `json:"token"`
+	// ExpiresAt access_token 過期時間（RFC3339）
+	ExpiresAt time.Time `json:"expiresAt"`
 
 	// User 使用者完整資料（不含密碼）
 	User UserDetail `json:"user"`
@@ -2003,9 +2057,15 @@ type UserCreateRequest struct {
 	// Password 初始密碼（服務端以 bcrypt 儲存，永不在 response 出現）
 	Password string `json:"password"`
 
+	// Role 系統層角色（選填，預設為 user）
+	Role *UserCreateRequestRole `json:"role,omitempty"`
+
 	// Username 登入帳號（唯一，建立後不可更改）
 	Username string `json:"username"`
 }
+
+// UserCreateRequestRole 系統層角色（選填，預設為 user）
+type UserCreateRequestRole string
 
 // UserDetail 使用者完整資料（不含密碼）
 type UserDetail struct {
@@ -2033,12 +2093,22 @@ type UserDetail struct {
 	// Occupation 職業
 	Occupation *string `json:"occupation,omitempty"`
 
+	// Role 系統層角色。
+	// - `admin`：系統管理員，可管理物業、使用者、群組
+	// - `user`：一般使用者，只能存取被授權的物業
+	Role UserDetailRole `json:"role"`
+
 	// UserId 使用者流水號
 	UserId int `json:"userId"`
 
 	// Username 登入帳號（最長 25 字元）
 	Username string `json:"username"`
 }
+
+// UserDetailRole 系統層角色。
+// - `admin`：系統管理員，可管理物業、使用者、群組
+// - `user`：一般使用者，只能存取被授權的物業
+type UserDetailRole string
 
 // UserGroupRef 使用者所屬群組的簡要資訊
 type UserGroupRef struct {
@@ -2105,7 +2175,13 @@ type UserUpdateRequest struct {
 
 	// Password 新密碼（選填，不提供則不更改密碼；以 bcrypt 儲存）
 	Password *string `json:"password,omitempty"`
+
+	// Role 系統層角色（選填，不提供則不更改）
+	Role *UserUpdateRequestRole `json:"role,omitempty"`
 }
+
+// UserUpdateRequestRole 系統層角色（選填，不提供則不更改）
+type UserUpdateRequestRole string
 
 // UsernameCheckResponse defines model for UsernameCheckResponse.
 type UsernameCheckResponse struct {
