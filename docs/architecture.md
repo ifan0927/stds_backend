@@ -69,6 +69,7 @@ migration/        ← golang-migrate SQL 檔案
 ### Error Handling
 
 - 共用錯誤型別集中於 `internal/apperr`
+- 錯誤代碼常數集中於 `internal/apperr/code.go`，常數值需直接對齊 OpenAPI `ErrorResponse.code`
 - `AppError` 區分 `HTTPStatus`、對外 `Code`/`Message`、對內原始 `Err`
 - validation 錯誤以 `[]ErrorDetail` 承載欄位明細，供 middleware 映射 API response
 - Gin error handler middleware 讀取 `c.Errors`，統一轉為 OpenAPI `ErrorResponse`
@@ -100,6 +101,11 @@ _待第一個模組完成後補充。_
 - request logging 由最外層 Gin middleware 負責，確保 401/404 等請求也會留下 log
 - request ID 優先沿用 `X-Request-Id`，否則生成 UUID，並同步寫回 response header 與 gin context
 - request log 使用 `slog.Info` 輸出 structured JSON，欄位固定包含 request metadata 與 `X-Cloud-Trace-Context`
+
+### Documentation
+
+- 補充 godoc 時，預設以英文撰寫標準 declaration comment，內容應以目前實作責任為準，不延伸承諾尚未存在的行為
+- 檔案範圍明確的註解任務可使用 `docs/spec/godoc-file-scope-template.md` 作為通用 spec 起點
 
 ---
 
