@@ -49,15 +49,14 @@ migration/        ← golang-migrate SQL 檔案
 
 ## Cloud Ready 關鍵決策
 
-> 隨 Phase 2 Bootstrap 完成後持續補充
-
 | 項目 | 實作方式 | 狀態 |
 |------|---------|------|
-| Health Check | `GET /healthz` | 已實作 |
-| Graceful Shutdown | SIGTERM → drain → exit | 已實作 |
-| DB 連線 | Cloud SQL unix socket / Auth Proxy | 已實作 |
+| Health Check | `GET /healthz`，含 DB ping | ✅ 已實作 |
+| Graceful Shutdown | `signal.NotifyContext` + `http.Server.Shutdown(ctx)` | ✅ 已實作 |
+| DB 連線 | `DATABASE_DSN` 環境變數注入；Cloud SQL unix socket 組法 | ✅ 已實作 |
 | Secrets | Secret Manager | 待實作 |
-| Logging | Gin middleware + `slog` JSON + `X-Cloud-Trace-Context` | 已建立基礎 middleware |
+| Logging | Gin middleware + `slog` JSON + `X-Cloud-Trace-Context` | ✅ 已實作 |
+| Secret 保護 | `config.Config` / `DBconfig` 實作 `slog.LogValuer`，DSN/JWTSecret 不寫入 log | ✅ 已實作 |
 | Container | non-root、distroless/alpine | 待實作 |
 
 ---
@@ -86,10 +85,12 @@ _待第一個模組完成後補充。_
 ### Config / Bootstrap
 
 - application config 集中於 `internal/config`，由 `caarlos0/env` 自環境變數載入
-- DB 連線優先讀 `STDS_DB_URL`，否則以 `DB_*` 欄位組 DSN；Cloud SQL 使用 unix socket 組法
-- server entrypoint 統一由 `cmd/server/main.go` 負責 logger、DB、router、graceful shutdown wiring
-- OpenAPI generated routes 在模組尚未實作前，可先接 placeholder strict server，不直接在 `main.go` 留未接線 TODO
-- `config.Config` 實作 `slog.LogValuer`，避免 DSN / DB password 等敏感設定直接寫入 structured log
+- DB 連線由 `DATABASE_DSN` 環境變數注入；Cloud SQL 使用 unix socket 組法
+- server entrypoint 為 `cmd/server/main.go`，純 wiring（解析 config → init logger → init DB → init router → 啟動 server → graceful shutdown）
+- bootstrap 輔助函式（`initLogger`、`initRouter`）集中於 `cmd/server/setup.go`，不放在 `main.go`
+- OpenAPI generated routes 在模組尚未實作前，接 placeholder strict server（`panic("not implemented")`），搭配 `gin.Recovery()` 確保不 crash
+- `config.Config` 與 `config.DBconfig` 均實作 `slog.LogValuer`，避免 DSN / JWTSecret 等敏感設定寫入 structured log
+- `apperr.AppError` 實作 `Unwrap() error`，確保 `errors.Is` / `errors.As` 可穿透 error chain
 
 ### Response 格式
 
@@ -114,7 +115,7 @@ _待第一個模組完成後補充。_
 | 模組 | 狀態 |
 |------|------|
 | Phase 1 Code Gen | ✅ 完成 |
-| Phase 2 Bootstrap | 進行中（logging / error middleware / config / db / main 基礎完成） |
+| Phase 2 Bootstrap | ✅ 完成 |
 | Estate | 待開始 |
 | Estate Rent | 待開始 |
 | Estate Electric | 待開始 |

@@ -11,19 +11,29 @@ import (
 	"github.com/ifan0927/stds-backend/internal/config"
 	"github.com/ifan0927/stds-backend/internal/handler"
 	"github.com/ifan0927/stds-backend/internal/middleware"
+	"github.com/lmittmann/tint"
 	"gorm.io/gorm"
 )
 
 // initLogger builds the application logger from runtime configuration.
 func initLogger(cfg config.Config) (*slog.Logger, error) {
+	w := os.Stdout
 	var loglevel slog.LevelVar
 	err := loglevel.UnmarshalText([]byte(cfg.LogLevel))
 	if err != nil {
 		return nil, err
 	}
-	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: &loglevel,
-	})
+	var logHandler slog.Handler
+	if os.Getenv("APP_ENV") == "dev" {
+		logHandler = tint.NewHandler(w, &tint.Options{
+			Level: &loglevel,
+		})
+	} else {
+		logHandler = slog.NewJSONHandler(w, &slog.HandlerOptions{
+			Level: &loglevel,
+		})
+	}
+
 	return slog.New(logHandler), nil
 }
 
