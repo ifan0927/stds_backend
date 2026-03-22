@@ -272,6 +272,7 @@ paths:
       description: |
         以完整清單取代目前的物業成員分配。
         提交 userId 陣列，系統比對差異後新增/移出成員。
+        userIds 不可包含重複值，重複時回傳 400 VALIDATION_ERROR。
         僅具管理員權限（memberLevel=admin）的成員或系統管理員可執行。
       operationId: updateEstateMembers
       tags: [Estate]
@@ -338,7 +339,20 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          $ref: '#/components/responses/UserNotFound'
+          description: 物業或成員不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                estate_not_found:
+                  value:
+                    code: ESTATE_NOT_FOUND
+                    message: 找不到指定的物業
+                user_not_found:
+                  value:
+                    code: USER_NOT_FOUND
+                    message: 找不到指定的使用者
 
   # ─────────────────────────────────────────────
   # 房間（Rooms）
@@ -417,6 +431,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/EstateNotFound'
+        '409':
+          $ref: '#/components/responses/RoomNumberAlreadyExists'
 
   /v1/estates/{estateId}/rooms/sort:
     parameters:
@@ -427,6 +443,7 @@ paths:
       description: |
         拖曳排序後提交完整的房間排序清單。
         提交所有 roomId 及其對應的新 sortOrder。
+        允許提交空清單（estate 目前無房間時合法），server 不執行任何更新。
       operationId: updateRoomSort
       tags: [Estate]
       security:
@@ -577,6 +594,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/RoomNotFound'
+        '409':
+          $ref: '#/components/responses/RoomNumberAlreadyExists'
 
   # ─────────────────────────────────────────────
   # 租賃（Rents）
@@ -4065,12 +4084,15 @@ components:
         estateId:
           type: integer
           description: 物業流水號
+          example: 1
         title:
           type: string
           description: 物業全名（案名）
+          example: 陽光大廈
         shortTitle:
           type: string
           description: 物業簡稱
+          example: 陽光
 
     EstateDetail:
       type: object
@@ -4079,28 +4101,36 @@ components:
       properties:
         estateId:
           type: integer
+          example: 1
         title:
           type: string
           description: 物業全名（案名）
+          example: 陽光大廈
         shortTitle:
           type: string
           description: 物業簡稱（用於 Email 標題等）
+          example: 陽光
         ownerUserId:
           type: integer
           description: 業主系統使用者 ID
+          example: 1
         address:
           type: string
           description: 物業門牌地址
+          example: 台北市大安區和平東路一段100號
         phone:
           type: string
           description: 物業聯絡電話
+          example: 02-2345-6789
         ownerName:
           type: string
           description: 業主姓名
+          example: 王大明
         ownerEmail:
           type: string
           format: email
           description: 業主 Email
+          example: wang@example.com
         website:
           type: string
           format: uri
@@ -4141,25 +4171,31 @@ components:
           type: string
           maxLength: 255
           description: 物業全名（案名）
+          example: 陽光大廈
         shortTitle:
           type: string
           maxLength: 255
           description: 物業簡稱
+          example: 陽光
         ownerName:
           type: string
           maxLength: 255
           description: 業主姓名
+          example: 王大明
         ownerEmail:
           type: string
           format: email
           maxLength: 255
           description: 業主 Email（用於建立業主帳號）
+          example: wang@example.com
         address:
           type: string
           maxLength: 255
+          example: 台北市大安區和平東路一段100號
         phone:
           type: string
           maxLength: 255
+          example: 02-2345-6789
         website:
           type: string
           format: uri
@@ -4175,20 +4211,24 @@ components:
           items:
             type: string
           description: 公共設施名稱清單
+          example: ["電梯", "停車場"]
         electricityRate:
           type: number
           format: float
           description: 每度電費單價
           default: 4.5
+          example: 4.5
         electricityBillingCycle:
           type: string
           enum: [monthly, bimonthly]
           default: bimonthly
+          example: bimonthly
         zones:
           type: array
           items:
             type: string
           description: 區域/棟別清單
+          example: ["A棟", "B棟"]
 
     EstateUpdateRequest:
       type: object
@@ -4197,22 +4237,28 @@ components:
         title:
           type: string
           maxLength: 255
+          example: 陽光大廈（更新）
         shortTitle:
           type: string
           maxLength: 255
+          example: 陽光
         ownerName:
           type: string
           maxLength: 255
+          example: 王大明
         ownerEmail:
           type: string
           format: email
           maxLength: 255
+          example: wang@example.com
         address:
           type: string
           maxLength: 255
+          example: 台北市大安區和平東路一段100號
         phone:
           type: string
           maxLength: 255
+          example: 02-2345-6789
         website:
           type: string
           format: uri
@@ -4226,16 +4272,20 @@ components:
           type: array
           items:
             type: string
+          example: ["電梯", "停車場"]
         electricityRate:
           type: number
           format: float
+          example: 4.5
         electricityBillingCycle:
           type: string
           enum: [monthly, bimonthly]
+          example: bimonthly
         zones:
           type: array
           items:
             type: string
+          example: ["A棟", "B棟"]
 
     # ── 公共設施備忘錄（Facility）────────────
 
@@ -4246,13 +4296,16 @@ components:
         name:
           type: string
           description: 設施名稱（對應 estate.facilities 清單中的值）
+          example: 電梯
         memo:
           type: string
           description: 設施備忘錄（HTML rich text）
+          example: 每月定期保養，聯絡廠商：快速電梯 02-1234-5678
         updatedAt:
           type: string
           format: date-time
           description: 最後更新時間（RFC3339）
+          example: '2026-03-01T10:00:00+08:00'
 
     FacilityMemoUpdateRequest:
       type: object
@@ -4261,9 +4314,11 @@ components:
         facilityName:
           type: string
           description: 設施名稱（需存在於 estate.facilities 清單中）
+          example: 電梯
         memo:
           type: string
           description: 備忘錄內容（HTML rich text）
+          example: 每月定期保養，聯絡廠商：快速電梯 02-1234-5678
 
     # ── 物業成員（Member）────────────────────
 
@@ -4274,22 +4329,28 @@ components:
         userId:
           type: integer
           description: 使用者 ID
+          example: 1
         name:
           type: string
           description: 顯示名稱
+          example: Alice Admin
         username:
           type: string
           description: 登入帳號
+          example: alice
         unit:
           type: string
           description: 所屬單位名稱
+          example: 管理部
         title:
           type: string
           description: 職稱（如「主承辦人」）
+          example: 主承辦人
         memberLevel:
           type: string
           enum: [admin, readonly]
           description: 管理權限（admin=管理員，readonly=唯讀/通知成員）
+          example: admin
         calendarTextColor:
           type: string
           description: 行事曆文字顏色（hex，如 #FFFFFF）
@@ -4309,6 +4370,8 @@ components:
           items:
             type: integer
           minItems: 0
+          uniqueItems: true
+          example: [1, 2]
 
     EstateMemberUpdateRequest:
       type: object
@@ -4317,22 +4380,27 @@ components:
           type: string
           maxLength: 255
           description: 所屬單位名稱
+          example: 管理部
         title:
           type: string
           maxLength: 255
           description: 職稱
+          example: 主承辦人
         memberLevel:
           type: string
           enum: [admin, readonly]
           description: 管理權限
+          example: admin
         calendarTextColor:
           type: string
           pattern: '^#[0-9A-Fa-f]{6}$'
           description: 行事曆文字顏色（hex）
+          example: '#FFFFFF'
         calendarBgColor:
           type: string
           pattern: '^#[0-9A-Fa-f]{6}$'
           description: 行事曆背景顏色（hex）
+          example: '#6EB3E5'
 
     # ── 房間（Room）──────────────────────────
 
@@ -4344,6 +4412,7 @@ components:
           type: integer
           nullable: true
           description: 年繳金額（元）；未設定時為 null
+          example: 220000
         halfYearly:
           type: integer
           nullable: true
@@ -4356,6 +4425,7 @@ components:
           type: integer
           nullable: true
           description: 月繳金額（元）；未設定時為 null
+          example: 15000
 
     RoomSummary:
       type: object
@@ -4364,27 +4434,35 @@ components:
       properties:
         roomId:
           type: integer
+          example: 1
         estateId:
           type: integer
+          example: 1
         roomNumber:
           type: string
           description: 房號（如 A101）
+          example: A101
         storey:
           type: string
           description: 所在樓層
+          example: 2F
         roomType:
           type: string
           description: 房型（如 2房1廳）
+          example: 2房1廳
         sizeSquareMeter:
           type: number
           format: float
           description: 坪數
+          example: 25.5
         zone:
           type: string
           description: 所屬棟別/區域
+          example: A棟
         sortOrder:
           type: integer
           description: 顯示排序
+          example: 1
         activeRentId:
           type: integer
           nullable: true
@@ -4397,21 +4475,27 @@ components:
       properties:
         roomId:
           type: integer
+          example: 1
         estateId:
           type: integer
+          example: 1
         roomNumber:
           type: string
           description: 房號（如 A101）
+          example: A101
         storey:
           type: string
           description: 所在樓層
+          example: 2F
         roomType:
           type: string
           description: 房型
+          example: 2房1廳
         sizeSquareMeter:
           type: number
           format: float
           description: 坪數
+          example: 25.5
         facilities:
           type: object
           nullable: true
@@ -4419,6 +4503,7 @@ components:
             type: integer
             minimum: 0
           description: '房間設備清單。key 為設備名稱，value 為數量（0 表示不含此設備）。例：{"床組": 1, "書桌": 2, "電視": 0}'
+          example: {"床組": 1, "書桌": 1, "冷氣": 1}
         prices:
           $ref: '#/components/schemas/RoomPrice'
         note:
@@ -4426,9 +4511,11 @@ components:
           description: 備註（HTML rich text）
         sortOrder:
           type: integer
+          example: 1
         zone:
           type: string
           description: 所屬棟別/區域
+          example: A棟
 
     RoomCreateRequest:
       type: object
@@ -4438,16 +4525,20 @@ components:
           type: string
           maxLength: 255
           description: 房號（如 A101）
+          example: A101
         storey:
           type: string
           maxLength: 255
+          example: 2F
         roomType:
           type: string
           maxLength: 255
+          example: 2房1廳
         sizeSquareMeter:
           type: number
           format: float
           minimum: 0
+          example: 25.5
         facilities:
           type: object
           nullable: true
@@ -4455,6 +4546,7 @@ components:
             type: integer
             minimum: 0
           description: '房間設備清單。key 為設備名稱，value 為數量（0 表示不含此設備）。例：{"床組": 1, "書桌": 2, "電視": 0}'
+          example: {"床組": 1, "書桌": 1, "冷氣": 1}
         prices:
           $ref: '#/components/schemas/RoomPrice'
         note:
@@ -4466,6 +4558,7 @@ components:
           type: string
           maxLength: 255
           description: 所屬棟別/區域（需對應物業設定的 zones 其中一個值）
+          example: A棟
 
     RoomUpdateRequest:
       type: object
@@ -4474,16 +4567,20 @@ components:
         roomNumber:
           type: string
           maxLength: 255
+          example: A101
         storey:
           type: string
           maxLength: 255
+          example: 2F
         roomType:
           type: string
           maxLength: 255
+          example: 2房1廳
         sizeSquareMeter:
           type: number
           format: float
           minimum: 0
+          example: 25.5
         facilities:
           type: object
           nullable: true
@@ -4491,15 +4588,18 @@ components:
             type: integer
             minimum: 0
           description: '房間設備清單。key 為設備名稱，value 為數量（0 表示不含此設備）。例：{"床組": 1, "書桌": 2, "電視": 0}'
+          example: {"床組": 1, "書桌": 1, "冷氣": 1}
         prices:
           $ref: '#/components/schemas/RoomPrice'
         note:
           type: string
         sortOrder:
           type: integer
+          example: 1
         zone:
           type: string
           maxLength: 255
+          example: A棟
 
     RoomSortUpdateRequest:
       type: object
@@ -4508,15 +4608,18 @@ components:
         items:
           type: array
           description: 完整房間排序清單
+          example: [{"roomId": 1, "sortOrder": 0}, {"roomId": 2, "sortOrder": 1}]
           items:
             type: object
             required: [roomId, sortOrder]
             properties:
               roomId:
                 type: integer
+                example: 1
               sortOrder:
                 type: integer
                 minimum: 0
+                example: 0
 
     # ── 租賃（Rent）──────────────────────────
 
@@ -6271,6 +6374,16 @@ components:
           example:
             code: USER_NOT_FOUND
             message: 找不到指定的使用者
+    RoomNumberAlreadyExists:
+      description: 房號在此物業內已存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: ROOM_NUMBER_ALREADY_EXISTS
+            message: 此房號在該物業內已存在
+
     CannotDeleteHasRoomsOrRents:
       description: 物業下有房間或租約，無法刪除
       content:

@@ -2270,6 +2270,9 @@ type RentNotFound = ErrorResponse
 // RoomNotFound defines model for RoomNotFound.
 type RoomNotFound = ErrorResponse
 
+// RoomNumberAlreadyExists defines model for RoomNumberAlreadyExists.
+type RoomNumberAlreadyExists = ErrorResponse
+
 // ScheduleNotFound defines model for ScheduleNotFound.
 type ScheduleNotFound = ErrorResponse
 
@@ -7225,6 +7228,8 @@ type RentNotFoundJSONResponse ErrorResponse
 
 type RoomNotFoundJSONResponse ErrorResponse
 
+type RoomNumberAlreadyExistsJSONResponse ErrorResponse
+
 type ScheduleNotFoundJSONResponse ErrorResponse
 
 type TenantNotFoundJSONResponse ErrorResponse
@@ -9007,7 +9012,7 @@ func (response UpdateEstateMember403JSONResponse) VisitUpdateEstateMemberRespons
 	return json.NewEncoder(w).Encode(response)
 }
 
-type UpdateEstateMember404JSONResponse struct{ UserNotFoundJSONResponse }
+type UpdateEstateMember404JSONResponse ErrorResponse
 
 func (response UpdateEstateMember404JSONResponse) VisitUpdateEstateMemberResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
@@ -10400,6 +10405,17 @@ func (response CreateRoom404JSONResponse) VisitCreateRoomResponse(w http.Respons
 	return json.NewEncoder(w).Encode(response)
 }
 
+type CreateRoom409JSONResponse struct {
+	RoomNumberAlreadyExistsJSONResponse
+}
+
+func (response CreateRoom409JSONResponse) VisitCreateRoomResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type UpdateRoomSortRequestObject struct {
 	EstateId EstateIdParam `json:"estateId"`
 	Body     *UpdateRoomSortJSONRequestBody
@@ -10661,6 +10677,17 @@ type CopyRoom404JSONResponse struct{ RoomNotFoundJSONResponse }
 func (response CopyRoom404JSONResponse) VisitCopyRoomResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CopyRoom409JSONResponse struct {
+	RoomNumberAlreadyExistsJSONResponse
+}
+
+func (response CopyRoom409JSONResponse) VisitCopyRoomResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 
 	return json.NewEncoder(w).Encode(response)
 }

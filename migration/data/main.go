@@ -107,6 +107,7 @@ func runModule02(ctx context.Context, db *pgxpool.Pool, inputDir string, dryRun 
 
 func runSeed(ctx context.Context, db *pgxpool.Pool, dryRun bool) {
 	must("seed_auth", seed.SeedAuth(ctx, db, dryRun))
+	must("seed_estate", seed.SeedEstate(ctx, db, dryRun))
 }
 
 func must(step string, err error) {

@@ -89,12 +89,13 @@
 ### 業務邏輯步驟
 1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
 2. 驗證 estateId 存在
-3. 驗證每個 userId 存在於使用者資料表
-4. 取得現有成員清單，比對差異：
+3. 驗證 userIds 陣列無重複值；若有重複回傳 400 `VALIDATION_ERROR`
+4. 驗證每個 userId 存在於使用者資料表
+5. 取得現有成員清單，比對差異：
    - 新增：在 estate_member_links 建立記錄，memberLevel 預設為 `readonly`
    - 移除：從 estate_member_links 刪除記錄（保留 estate_mems 個人設定不刪除，避免重新加入時需重設）
    - 無變化：保留
-5. 回傳 200 + 完整成員清單
+6. 回傳 200 + 完整成員清單
 
 ### Side Effects
 - Email 通知：無
@@ -132,10 +133,11 @@
 1. 驗證請求者具備此物業的管理員權限或系統管理員
 2. 驗證 estateId 存在
 3. 驗證 roomNumber 不為空
-4. 若提供 zone，驗證 zone 值存在於 estate.zones 清單中
-5. 若未提供 sortOrder，自動取現有最大排序 + 1
-6. 寫入 rooms 資料表
-7. 回傳 201 + Location header + 完整房間詳情
+4. 驗證同 estate 內 roomNumber 不重複；若重複回傳 409 `ROOM_NUMBER_ALREADY_EXISTS`
+5. 若提供 zone，驗證 zone 值存在於 estate.zones 清單中
+6. 若未提供 sortOrder，自動取現有最大排序 + 1
+7. 寫入 rooms 資料表
+8. 回傳 201 + Location header + 完整房間詳情
 
 ### Side Effects
 - Email 通知：無
@@ -190,11 +192,12 @@
 2. 驗證 roomId 存在且屬於 estateId
 3. 讀取原房間所有欄位
 4. 計算新房號：取原房號首字元 + (原末尾數字 + 1)，例如 A101 → A102
-5. 新 sortOrder = 原 sortOrder + 1
-6. 複製欄位：facilities、prices、note、zone、storey、roomType、sizeSquareMeter
-7. 寫入新房間記錄
-8. 附件不複製（舊系統有複製附件邏輯，新系統實作時由檔案模組確認後決定）
-9. 回傳 201 + Location header + 完整新房間詳情
+5. 驗證計算出的新房號在同 estate 內不重複；若重複回傳 409 `ROOM_NUMBER_ALREADY_EXISTS`
+6. 新 sortOrder = 原 sortOrder + 1
+7. 複製欄位：facilities、prices、note、zone、storey、roomType、sizeSquareMeter
+8. 寫入新房間記錄
+9. 附件不複製（舊系統有複製附件邏輯，新系統實作時由檔案模組確認後決定）
+10. 回傳 201 + Location header + 完整新房間詳情
 
 ### Side Effects
 - Email 通知：無
@@ -210,9 +213,10 @@
 ### 業務邏輯步驟
 1. 驗證請求者具備此物業的管理員權限或系統管理員
 2. 驗證 estateId 存在
-3. 驗證提交清單中的所有 roomId 均屬於 estateId；若有不屬於的 roomId 回傳 `VALIDATION_ERROR`
-4. 批次更新 rooms 的 sortOrder
-5. 回傳 200 + 更新後的排序清單
+3. 允許空清單（estate 目前無房間時合法）；空清單時跳過後續步驟，直接回傳 200 空陣列
+4. 驗證提交清單中的所有 roomId 均屬於 estateId；若有不屬於的 roomId 回傳 `VALIDATION_ERROR`
+5. 批次更新 rooms 的 sortOrder
+6. 回傳 200 + 更新後的排序清單
 
 ### Side Effects
 - Email 通知：無
