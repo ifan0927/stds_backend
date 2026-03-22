@@ -117,7 +117,6 @@ func (s *authService) Login(ctx context.Context, input LoginInput) (LoginResult,
 		if errors.Is(err, ErrNotFound) {
 			return LoginResult{}, invalidCredentialsError()
 		}
-		// TODO(codereview): NewInternalError() swallows original error; set AppError.Err = err to preserve the cause for logging
 		return LoginResult{}, apperr.WrapInternal(err)
 	}
 	if !user.IsEnabled {
@@ -129,7 +128,6 @@ func (s *authService) Login(ctx context.Context, input LoginInput) (LoginResult,
 
 	estateIDs, err := s.repo.ListEstateIDsByUserID(ctx, user.UserID)
 	if err != nil {
-		// TODO(codereview): NewInternalError() swallows original error; set AppError.Err = err to preserve the cause for logging
 		return LoginResult{}, apperr.WrapInternal(err)
 	}
 
@@ -147,7 +145,6 @@ func (s *authService) Login(ctx context.Context, input LoginInput) (LoginResult,
 		},
 	})
 	if err != nil {
-		// TODO(codereview): NewInternalError() swallows original error; set AppError.Err = err to preserve the cause for logging
 		return LoginResult{}, apperr.WrapInternal(err)
 	}
 
@@ -183,7 +180,6 @@ func (s *authService) ChangeMyPassword(ctx context.Context, input ChangeMyPasswo
 
 	passwordHash, err := s.repo.PasswordHashByUserID(ctx, input.UserID)
 	if err != nil {
-		// TODO(codereview): NewInternalError() swallows original error; set AppError.Err = err to preserve the cause for logging
 		return apperr.WrapInternal(err)
 	}
 	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(input.CurrentPassword)) != nil {
@@ -196,11 +192,9 @@ func (s *authService) ChangeMyPassword(ctx context.Context, input ChangeMyPasswo
 
 	newHash, err := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
-		// TODO(codereview): NewInternalError() swallows original error; set AppError.Err = err to preserve the cause for logging
 		return apperr.WrapInternal(err)
 	}
 	if err := s.repo.UpdatePasswordHash(ctx, input.UserID, string(newHash), s.now()); err != nil {
-		// TODO(codereview): NewInternalError() swallows original error; set AppError.Err = err to preserve the cause for logging
 		return apperr.WrapInternal(err)
 	}
 	return nil

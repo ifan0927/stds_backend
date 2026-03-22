@@ -7,7 +7,8 @@
 //	  --module=01       # estates, rooms, facility_memos
 //	  --module=01post   # member_profiles, member_links (requires users done)
 //	  --module=02       # groups, users, user_group_links, tenants, electric_readings, rents, rent_tenant_links, schedules, schedule_replies
-//	  --module=all      # 01 → 02 → 01post in order
+//	  --module=seed     # development auth seed data
+//	  --module=all      # 01 -> 02 -> 01post in order
 //	  --input=./migration_input
 //	  --dry-run         # log actions without writing to DB
 package main
@@ -22,18 +23,19 @@ import (
 
 	"github.com/ifan0927/stds-backend/migration/data/module01"
 	"github.com/ifan0927/stds-backend/migration/data/module02"
+	"github.com/ifan0927/stds-backend/migration/data/seed"
 	"github.com/ifan0927/stds-backend/migration/data/shared"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
-	module := flag.String("module", "", "module to run: 01 | 01post | 02 | all")
+	module := flag.String("module", "", "module to run: 01 | 01post | 02 | seed | all")
 	inputDir := flag.String("input", "./migration_input", "path to migration_input directory")
 	dryRun := flag.Bool("dry-run", false, "log actions without writing to DB")
 	flag.Parse()
 
 	if *module == "" {
-		fmt.Fprintln(os.Stderr, "error: --module is required (01 | 01post | 02 | all)")
+		fmt.Fprintln(os.Stderr, "error: --module is required (01 | 01post | 02 | seed | all)")
 		os.Exit(1)
 	}
 
@@ -57,6 +59,8 @@ func main() {
 		runModule01Post(ctx, pool, *inputDir, *dryRun)
 	case "02":
 		runModule02(ctx, pool, *inputDir, *dryRun)
+	case "seed":
+		runSeed(ctx, pool, *dryRun)
 	case "all":
 		runModule01(ctx, pool, *inputDir, *dryRun)
 		runModule02(ctx, pool, *inputDir, *dryRun)
@@ -99,6 +103,10 @@ func runModule02(ctx context.Context, db *pgxpool.Pool, inputDir string, dryRun 
 	must("rent_tenant_links", module02.MigrateRentTenantLinks(ctx, db, inputDir, dryRun))
 	must("schedules", module02.MigrateSchedules(ctx, db, inputDir, dryRun))
 	must("schedule_replies", module02.MigrateScheduleReplies(ctx, db, inputDir, dryRun))
+}
+
+func runSeed(ctx context.Context, db *pgxpool.Pool, dryRun bool) {
+	must("seed_auth", seed.SeedAuth(ctx, db, dryRun))
 }
 
 func must(step string, err error) {

@@ -73,6 +73,9 @@ migration/        ← golang-migrate SQL 檔案
 - validation 錯誤以 `[]ErrorDetail` 承載欄位明細，供 middleware 映射 API response
 - Gin error handler middleware 讀取 `c.Errors`，統一轉為 OpenAPI `ErrorResponse`
 - OpenAPI wrapper 的 request parse/bind error 對外只回固定訊息，不直接暴露 codegen/govalidator 內部錯誤細節
+- **Internal error 兩種用法：**
+  - 有原始 `error` cause（如 DB error、外部呼叫失敗）：用 `apperr.WrapInternal(err)`，保留 cause 供 Cloud Logging 追查
+  - 純邏輯狀態異常（如 context 缺少預期值）、無 cause：用 `apperr.NewInternalError()`
 
 ### DTO / Model Mapping
 
@@ -81,6 +84,30 @@ _待第一個模組完成後補充。_
 ### GORM Query 風格
 
 - 預設關閉 GORM 內建 logger，避免 SQL 與參數直接輸出到 stdout；需要慢查詢或額外觀測時再透過專案 logging 策略補上
+- 單筆查詢一律使用 `First`（自動加 `LIMIT 1`，找不到時回傳 `gorm.ErrRecordNotFound`）；`Scan` 用於多筆查詢或明確不需要 not-found 語意的場景
+- Repository 的 `gorm.ErrRecordNotFound` 統一在 repository 層轉為 domain error（如 `service.ErrNotFound`、`auth.ErrUserNotFound`），不往上暴露 GORM 內部型別
+- Repository struct 欄位命名：`DB *gorm.DB`（全大寫縮寫，符合 Go convention）
+
+### Seed Data
+
+- Seed 腳本放在 `migration/data/seed/`，對應 `--module=seed`，與 module01、module02 平行
+- **每個模組開發前**需補齊：該模組 Request schema 的 `openapi.yaml example` 值 + 對應 DB seed 資料，兩者保持同步
+- 密碼以 `bcrypt.DefaultCost` hash 儲存；seed 帳號密碼與 openapi.yaml example 值綁定
+- 標準 seed 帳號：
+
+  | username | password | role |
+  |----------|----------|------|
+  | alice | secret123 | admin |
+  | bob | secret123 | member |
+
+- Seed 資料僅供開發環境，不進 production migration
+
+### Auth / Context
+
+- JWT claims 與 context helpers 集中於 `internal/auth`
+- Auth middleware 驗證 token 後，將 `*auth.Claims` 與 `*auth.UserState` 存入 request context
+- Context 存取 helpers 命名規則：`XxxFromContext(ctx)`（如 `ClaimsFromContext`、`UserStateFromContext`），不使用 `GetXxx` 前綴
+- Middleware 傳遞 context 給下層時使用 `c.Request.Context()`，不直接傳 `*gin.Context`
 
 ### Config / Bootstrap
 
@@ -116,6 +143,7 @@ _待第一個模組完成後補充。_
 |------|------|
 | Phase 1 Code Gen | ✅ 完成 |
 | Phase 2 Bootstrap | ✅ 完成 |
+| Auth | ✅ 完成 |
 | Estate | 待開始 |
 | Estate Rent | 待開始 |
 | Estate Electric | 待開始 |

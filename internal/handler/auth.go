@@ -26,7 +26,6 @@ func (s *Server) Login(ctx context.Context, request api.LoginRequestObject) (api
 		Groups:      nil,
 		IsEnabled:   loginResult.User.IsEnabled,
 		LastLoginAt: loginResult.User.LastLoginAt,
-		// TODO(codereview): Name should map loginResult.User.Name (display name), not Username — two different fields
 		Name:       &loginResult.User.Name,
 		Occupation: loginResult.User.Occupation,
 		Role:       api.UserDetailRole(loginResult.User.Role),

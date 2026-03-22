@@ -5615,10 +5615,12 @@ components:
           type: string
           minLength: 1
           description: 目前的密碼（用於驗證身份，不得為空）
+          example: secret123
         newPassword:
           type: string
           minLength: 6
           description: 新密碼（至少 6 個字元；服務端以 bcrypt 儲存，永不在 response 出現）
+          example: newSecret456
 
     UserBatchCreateRequest:
       type: object
@@ -5715,9 +5717,11 @@ components:
         username:
           type: string
           description: 登入帳號
+          example: alice
         password:
           type: string
           description: 密碼（明文，HTTPS 傳輸）
+          example: secret123
 
     LoginResponse:
       type: object
