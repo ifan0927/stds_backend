@@ -4165,7 +4165,7 @@ components:
 
     EstateCreateRequest:
       type: object
-      required: [title, shortTitle, ownerName, ownerEmail, electricityRate, electricityBillingCycle]
+      required: [title, shortTitle, ownerName, ownerUsername, ownerEmail, electricityRate, electricityBillingCycle]
       properties:
         title:
           type: string
@@ -4182,11 +4182,16 @@ components:
           maxLength: 255
           description: 業主姓名
           example: 王大明
+        ownerUsername:
+          type: string
+          maxLength: 25
+          description: 業主登入帳號（唯一，建立後不可更改）。用於建立業主系統帳號。
+          example: wang_daming
         ownerEmail:
           type: string
           format: email
           maxLength: 255
-          description: 業主 Email（用於建立業主帳號）
+          description: 業主 Email（用於建立業主帳號，並寄送初始密碼通知）
           example: wang@example.com
         address:
           type: string
