@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/ifan0927/stds-backend/internal/api"
@@ -75,7 +76,7 @@ func TestChangeMyPassword_ServiceError(t *testing.T) {
 		t.Fatalf("response = %#v, want nil", response)
 	}
 	var appErr apperr.AppError
-	if !errorAs(err, &appErr) {
+	if !errors.As(err, &appErr) {
 		t.Fatalf("ChangeMyPassword() error = %v, want apperr.AppError", err)
 	}
 	if appErr.Code != apperr.CodeCurrentPasswordIncorrect {

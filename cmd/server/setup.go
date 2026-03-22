@@ -59,13 +59,13 @@ func initRouter(cfg config.Config, gormDB *gorm.DB) *gin.Engine {
 		sqlDB, err := gormDB.DB()
 		var appErr apperr.AppError
 		if err != nil {
-			appErr = apperr.NewInternalError("error connecting to database")
+			appErr = apperr.WrapInternal(err)
 			c.JSON(appErr.HTTPStatus, appErr)
 			return
 		}
 		err = sqlDB.Ping()
 		if err != nil {
-			appErr := apperr.NewInternalError("error pinging database")
+			appErr := apperr.WrapInternal(err)
 			c.JSON(appErr.HTTPStatus, appErr)
 			return
 		}

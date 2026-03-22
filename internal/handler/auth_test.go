@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -88,7 +89,7 @@ func TestLogin_ServiceError(t *testing.T) {
 		t.Fatalf("response = %#v, want nil", response)
 	}
 	var appErr apperr.AppError
-	if !errorAs(err, &appErr) {
+	if !errors.As(err, &appErr) {
 		t.Fatalf("Login() error = %v, want apperr.AppError", err)
 	}
 	if appErr.Code != apperr.CodeInvalidCredentials {
@@ -143,19 +144,5 @@ func (s authHandlerServiceStub) ChangeMyPassword(ctx context.Context, input serv
 func newAuthTestServer(authService authHandlerService) *Server {
 	return &Server{
 		authService: authService,
-	}
-}
-
-func errorAs(err error, target any) bool {
-	switch t := target.(type) {
-	case *apperr.AppError:
-		appErr, ok := err.(apperr.AppError)
-		if !ok {
-			return false
-		}
-		*t = appErr
-		return true
-	default:
-		return false
 	}
 }

@@ -45,21 +45,25 @@ func (estateMemberLinkRow) TableName() string {
 	return "estate_member_links"
 }
 
+// AuthRepository implements auth persistence and state loading against the database.
 type AuthRepository struct {
-	Db *gorm.DB
+	DB *gorm.DB
 }
 
+// NewAuthRepository creates the auth repository implementation.
 func NewAuthRepository(db *gorm.DB) service.AuthRepository {
-	return &AuthRepository{Db: db}
+	return &AuthRepository{DB: db}
 }
 
+// NewStateLoader creates the auth state loader backed by the auth repository.
 func NewStateLoader(db *gorm.DB) auth.StateLoader {
-	return &AuthRepository{Db: db}
+	return &AuthRepository{DB: db}
 }
 
+// FindByUsername returns the auth user record for the given username.
 func (r *AuthRepository) FindByUsername(ctx context.Context, username string) (service.AuthUser, error) {
 	var row userRow
-	err := r.Db.WithContext(ctx).Where("username = ?", username).First(&row).Error
+	err := r.DB.WithContext(ctx).Where("username = ?", username).First(&row).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return service.AuthUser{}, service.ErrNotFound
@@ -85,9 +89,10 @@ func toServiceUser(row userRow) service.AuthUser {
 	}
 }
 
+// ListEstateIDsByUserID returns estate memberships for the given user.
 func (r *AuthRepository) ListEstateIDsByUserID(ctx context.Context, userID int64) ([]int64, error) {
 	var estateIds []int64
-	err := r.Db.WithContext(ctx).Model(&estateMemberLinkRow{}).
+	err := r.DB.WithContext(ctx).Model(&estateMemberLinkRow{}).
 		Where("user_id = ?", userID).
 		Pluck("estate_id", &estateIds).Error
 	if err != nil {
@@ -100,8 +105,9 @@ func (r *AuthRepository) ListEstateIDsByUserID(ctx context.Context, userID int64
 	return estateIds, nil
 }
 
+// UpdateLastLoginAt stores the last successful login time for the given user.
 func (r *AuthRepository) UpdateLastLoginAt(ctx context.Context, userID int64, at time.Time) error {
-	_ = r.Db.WithContext(ctx).Model(&userRow{}).
+	_ = r.DB.WithContext(ctx).Model(&userRow{}).
 		Where("id = ?", userID).
 		Update("last_login_at", at).
 		Error
@@ -109,22 +115,26 @@ func (r *AuthRepository) UpdateLastLoginAt(ctx context.Context, userID int64, at
 	return nil
 }
 
-func (r *AuthRepository) GetPasswordHashByUserID(ctx context.Context, userID int64) (string, error) {
-	var hash string
-	err := r.Db.WithContext(ctx).Model(&userRow{}).
-		Where("id = ?", userID).
+// PasswordHashByUserID returns the stored password hash for the given user.
+func (r *AuthRepository) PasswordHashByUserID(ctx context.Context, userID int64) (string, error) {
+	var row userRow
+	err := r.DB.WithContext(ctx).Model(&userRow{}).
 		Select("password_hash").
-		Scan(&hash).
-		Error
+		First(&row, userID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", auth.ErrUserNotFound
+	}
+
 	if err != nil {
 		return "", err
 	}
-	return hash, nil
+	return row.PasswordHash, nil
 }
 
+// UpdatePasswordHash replaces the user's password hash and updates the change timestamp.
 func (r *AuthRepository) UpdatePasswordHash(ctx context.Context, userID int64, passwordHash string, at time.Time) error {
 
-	err := r.Db.WithContext(ctx).Model(&userRow{}).
+	err := r.DB.WithContext(ctx).Model(&userRow{}).
 		Where("id = ?", userID).
 		Updates(map[string]interface{}{
 			"password_hash":       passwordHash,
@@ -138,9 +148,10 @@ func (r *AuthRepository) UpdatePasswordHash(ctx context.Context, userID int64, p
 	return nil
 }
 
+// Load returns auth state required by middleware for the given user.
 func (r *AuthRepository) Load(ctx context.Context, userID int64) (auth.UserState, error) {
 	var row userRow
-	err := r.Db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Select("is_enabled", "password_changed_at").
 		First(&row, userID).Error
 
@@ -155,9 +166,4 @@ func (r *AuthRepository) Load(ctx context.Context, userID int64) (auth.UserState
 		IsEnabled:         row.IsEnabled,
 		PasswordChangedAt: row.PasswordChangedAt,
 	}, nil
-}
-
-type authFields struct {
-	IsEnabled         bool
-	PasswordChangedAt *time.Time
 }

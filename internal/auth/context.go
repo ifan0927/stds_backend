@@ -6,12 +6,17 @@ import (
 	"github.com/ifan0927/stds-backend/internal/apperr"
 )
 
+// ContextKey identifies auth values stored on the request context.
 type ContextKey string
 
+// ClaimsKey stores auth claims on the request context.
 const ClaimsKey ContextKey = "claims"
+
+// UserKey stores the current user state on the request context.
 const UserKey ContextKey = "user"
 
-func GetClaims(c context.Context) (*Claims, error) {
+// ClaimsFromContext returns the auth claims stored on the request context.
+func ClaimsFromContext(c context.Context) (*Claims, error) {
 	val := c.Value(ClaimsKey)
 	if val == nil {
 		return nil, apperr.NewInternalError("no claims found")
@@ -23,7 +28,8 @@ func GetClaims(c context.Context) (*Claims, error) {
 	return claims, nil
 }
 
-func GetCurrentUserState(c context.Context) (*UserState, error) {
+// UserStateFromContext returns the current user state stored on the request context.
+func UserStateFromContext(c context.Context) (*UserState, error) {
 	val := c.Value(UserKey)
 	if val == nil {
 		return nil, apperr.NewInternalError("no user state")

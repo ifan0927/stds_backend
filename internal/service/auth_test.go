@@ -210,7 +210,7 @@ func TestAuthService_ChangeMyPassword(t *testing.T) {
 			repo: &authRepositoryStub{
 				getPasswordHashByUserIDFunc: func(ctx context.Context, userID int64) (string, error) {
 					if userID != 7 {
-						t.Fatalf("GetPasswordHashByUserID() userID = %d, want 7", userID)
+						t.Fatalf("PasswordHashByUserID() userID = %d, want 7", userID)
 					}
 					return currentHash, nil
 				},
@@ -330,9 +330,9 @@ func (s *authRepositoryStub) UpdateLastLoginAt(ctx context.Context, userID int64
 	return s.updateLastLoginAtFunc(ctx, userID, at)
 }
 
-func (s *authRepositoryStub) GetPasswordHashByUserID(ctx context.Context, userID int64) (string, error) {
+func (s *authRepositoryStub) PasswordHashByUserID(ctx context.Context, userID int64) (string, error) {
 	if s.getPasswordHashByUserIDFunc == nil {
-		return "", errors.New("unexpected GetPasswordHashByUserID call")
+		return "", errors.New("unexpected PasswordHashByUserID call")
 	}
 	return s.getPasswordHashByUserIDFunc(ctx, userID)
 }

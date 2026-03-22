@@ -10,7 +10,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/ifan0927/stds-backend/internal/apperr"
-	claims "github.com/ifan0927/stds-backend/internal/auth"
+	auth "github.com/ifan0927/stds-backend/internal/auth"
 	"github.com/ifan0927/stds-backend/internal/config"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -25,13 +25,13 @@ type AuthRepository interface {
 	FindByUsername(ctx context.Context, username string) (AuthUser, error)
 	ListEstateIDsByUserID(ctx context.Context, userID int64) ([]int64, error)
 	UpdateLastLoginAt(ctx context.Context, userID int64, at time.Time) error
-	GetPasswordHashByUserID(ctx context.Context, userID int64) (string, error)
+	PasswordHashByUserID(ctx context.Context, userID int64) (string, error)
 	UpdatePasswordHash(ctx context.Context, userID int64, passwordHash string, at time.Time) error
 }
 
 // TokenIssuer signs JWTs for successful login responses.
 type TokenIssuer interface {
-	IssueToken(claims claims.Claims) (string, error)
+	IssueToken(claims auth.Claims) (string, error)
 }
 
 // AuthService orchestrates auth-related business rules.
@@ -92,7 +92,7 @@ type JWTIssuer struct {
 }
 
 // IssueToken signs a JWT access token from auth claims.
-func (i JWTIssuer) IssueToken(claims claims.Claims) (string, error) {
+func (i JWTIssuer) IssueToken(claims auth.Claims) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(i.Secret)
 }
@@ -117,7 +117,8 @@ func (s *authService) Login(ctx context.Context, input LoginInput) (LoginResult,
 		if errors.Is(err, ErrNotFound) {
 			return LoginResult{}, invalidCredentialsError()
 		}
-		return LoginResult{}, apperr.NewInternalError()
+		// TODO(codereview): NewInternalError() swallows original error; set AppError.Err = err to preserve the cause for logging
+		return LoginResult{}, apperr.WrapInternal(err)
 	}
 	if !user.IsEnabled {
 		return LoginResult{}, invalidCredentialsError()
@@ -128,12 +129,13 @@ func (s *authService) Login(ctx context.Context, input LoginInput) (LoginResult,
 
 	estateIDs, err := s.repo.ListEstateIDsByUserID(ctx, user.UserID)
 	if err != nil {
-		return LoginResult{}, apperr.NewInternalError()
+		// TODO(codereview): NewInternalError() swallows original error; set AppError.Err = err to preserve the cause for logging
+		return LoginResult{}, apperr.WrapInternal(err)
 	}
 
 	issuedAt := s.now().UTC()
 	expiresAt := issuedAt.Add(s.cfg.JWTAccessTokenTTL)
-	token, err := s.issuer.IssueToken(claims.Claims{
+	token, err := s.issuer.IssueToken(auth.Claims{
 		UserID:    user.UserID,
 		Username:  user.Username,
 		Role:      user.Role,
@@ -145,7 +147,8 @@ func (s *authService) Login(ctx context.Context, input LoginInput) (LoginResult,
 		},
 	})
 	if err != nil {
-		return LoginResult{}, apperr.NewInternalError()
+		// TODO(codereview): NewInternalError() swallows original error; set AppError.Err = err to preserve the cause for logging
+		return LoginResult{}, apperr.WrapInternal(err)
 	}
 
 	_ = s.repo.UpdateLastLoginAt(ctx, user.UserID, issuedAt)
@@ -178,9 +181,10 @@ func (s *authService) ChangeMyPassword(ctx context.Context, input ChangeMyPasswo
 		return apperr.NewValidationError(details)
 	}
 
-	passwordHash, err := s.repo.GetPasswordHashByUserID(ctx, input.UserID)
+	passwordHash, err := s.repo.PasswordHashByUserID(ctx, input.UserID)
 	if err != nil {
-		return apperr.NewInternalError()
+		// TODO(codereview): NewInternalError() swallows original error; set AppError.Err = err to preserve the cause for logging
+		return apperr.WrapInternal(err)
 	}
 	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(input.CurrentPassword)) != nil {
 		return apperr.AppError{
@@ -192,10 +196,12 @@ func (s *authService) ChangeMyPassword(ctx context.Context, input ChangeMyPasswo
 
 	newHash, err := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
-		return apperr.NewInternalError()
+		// TODO(codereview): NewInternalError() swallows original error; set AppError.Err = err to preserve the cause for logging
+		return apperr.WrapInternal(err)
 	}
 	if err := s.repo.UpdatePasswordHash(ctx, input.UserID, string(newHash), s.now()); err != nil {
-		return apperr.NewInternalError()
+		// TODO(codereview): NewInternalError() swallows original error; set AppError.Err = err to preserve the cause for logging
+		return apperr.WrapInternal(err)
 	}
 	return nil
 }

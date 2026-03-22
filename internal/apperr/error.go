@@ -41,6 +41,7 @@ func NewForbiddenError(msg ...string) AppError {
 	}
 }
 
+// NewValidationError creates an AppError for request validation failures.
 func NewValidationError(details []ErrorDetail, msg ...string) AppError {
 	message := "validation error"
 	if len(msg) > 0 {
@@ -54,6 +55,7 @@ func NewValidationError(details []ErrorDetail, msg ...string) AppError {
 	}
 }
 
+// NewTokenExpiredError creates an AppError for expired access tokens.
 func NewTokenExpiredError(msg ...string) AppError {
 	message := "authorization error: access token expired"
 	if len(msg) > 0 {
@@ -64,5 +66,14 @@ func NewTokenExpiredError(msg ...string) AppError {
 		Code:       CodeTokenExpired,
 		Message:    message,
 	}
+}
 
+// WrapInternal converts an unexpected error into an internal AppError while preserving the cause.
+func WrapInternal(cause error) AppError {
+	return AppError{
+		HTTPStatus: http.StatusInternalServerError,
+		Code:       CodeInternalError,
+		Message:    "internal server error",
+		Err:        cause, // 關鍵
+	}
 }
