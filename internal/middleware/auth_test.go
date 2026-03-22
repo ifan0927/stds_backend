@@ -109,8 +109,8 @@ func TestAuthMiddleware(t *testing.T) {
 			router := gin.New()
 			router.Use(authMiddleware(cfg, tt.loader, func() time.Time { return now }))
 			router.GET("/*path", func(c *gin.Context) {
-				_, claimsErr := auth.GetClaims(c.Request.Context())
-				_, currentUserErr := auth.GetCurrentUserState(c.Request.Context())
+				_, claimsErr := auth.ClaimsFromContext(c.Request.Context())
+				_, currentUserErr := auth.UserStateFromContext(c.Request.Context())
 				c.JSON(http.StatusOK, gin.H{
 					"claimsFound":      claimsErr == nil,
 					"currentUserFound": currentUserErr == nil,

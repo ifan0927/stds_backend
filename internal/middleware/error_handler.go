@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"errors"
+	"log/slog"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ifan0927/stds-backend/internal/apperr"
@@ -16,7 +17,8 @@ func ErrorHandler() gin.HandlerFunc {
 			var appErr apperr.AppError
 			ok := errors.As(ginErr.Err, &appErr)
 			if !ok {
-				appErr = apperr.NewInternalError()
+				appErr = apperr.WrapInternal(ginErr.Err)
+				slog.Error("unexpected error type", "error", ginErr.Err)
 			}
 			c.JSON(appErr.HTTPStatus, appErr)
 		}

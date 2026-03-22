@@ -41,8 +41,8 @@ func authMiddleware(cfg config.Config, loader auth.StateLoader, now func() time.
 			return
 		}
 		secret := []byte(cfg.JWTSecret)
-		token, notValid := extractToken(c, bearerToken, secret, now)
-		if notValid {
+		token, ok := extractToken(c, bearerToken, secret, now)
+		if !ok {
 			return
 		}
 
@@ -52,16 +52,16 @@ func authMiddleware(cfg config.Config, loader auth.StateLoader, now func() time.
 			c.AbortWithStatusJSON(appErr.HTTPStatus, appErr)
 			return
 		}
-		if validateClaims(c, claims) {
+		if !validateClaims(c, claims) {
 			return
 		}
 
-		userState, notValid := extractUserState(c, loader, claims)
-		if notValid {
+		userState, ok := extractUserState(c, loader, claims)
+		if !ok {
 			return
 		}
 
-		if validateUserState(c, userState, claims) {
+		if !validateUserState(c, userState, claims) {
 			return
 		}
 
@@ -87,58 +87,58 @@ func extractToken(c *gin.Context, bearerToken string, secret []byte, now func() 
 	if errors.Is(err, jwt.ErrTokenExpired) {
 		appErr := apperr.NewTokenExpiredError()
 		c.AbortWithStatusJSON(appErr.HTTPStatus, appErr)
-		return nil, true
+		return nil, false
 	}
 	if err != nil {
 		appErr := apperr.NewAuthorizationError("authorization error: error parsing token")
 		c.AbortWithStatusJSON(appErr.HTTPStatus, appErr)
-		return nil, true
+		return nil, false
 	}
 	if !token.Valid {
 		appErr := apperr.NewAuthorizationError("authorization error: invalid token")
 		c.AbortWithStatusJSON(appErr.HTTPStatus, appErr)
-		return nil, true
+		return nil, false
 	}
-	return token, false
+	return token, true
 }
 
 func extractUserState(c *gin.Context, loader auth.StateLoader, claims *auth.Claims) (auth.UserState, bool) {
-	userState, err := loader.Load(c, claims.UserID)
+	userState, err := loader.Load(c.Request.Context(), claims.UserID)
 	if errors.Is(err, auth.ErrUserNotFound) {
 		appErr := apperr.NewAuthorizationError("authorization error: user not found")
 		c.AbortWithStatusJSON(appErr.HTTPStatus, appErr)
-		return auth.UserState{}, true
+		return auth.UserState{}, false
 	}
 	if err != nil {
-		appErr := apperr.NewInternalError()
+		appErr := apperr.WrapInternal(err)
 		c.AbortWithStatusJSON(appErr.HTTPStatus, appErr)
-		return auth.UserState{}, true
+		return auth.UserState{}, false
 	}
-	return userState, false
+	return userState, true
 }
 
 func validateUserState(c *gin.Context, userState auth.UserState, claims *auth.Claims) bool {
 	if !userState.IsEnabled {
 		appErr := apperr.NewAuthorizationError("authorization error: user is disabled")
 		c.AbortWithStatusJSON(appErr.HTTPStatus, appErr)
-		return true
+		return false
 	}
 
 	if userState.PasswordChangedAt != nil && !claims.IssuedAt.After(*userState.PasswordChangedAt) {
 		appErr := apperr.NewTokenExpiredError()
 		c.AbortWithStatusJSON(appErr.HTTPStatus, appErr)
-		return true
+		return false
 	}
-	return false
+	return true
 }
 
 func validateClaims(c *gin.Context, claims *auth.Claims) bool {
 	if claims.Subject != strconv.FormatInt(claims.UserID, 10) {
 		appErr := apperr.NewAuthorizationError("authorization error: invalid claims")
 		c.AbortWithStatusJSON(appErr.HTTPStatus, appErr)
-		return true
+		return false
 	}
-	return false
+	return true
 }
 
 // isPublicPath reports whether the request path is excluded from JWT authentication.
