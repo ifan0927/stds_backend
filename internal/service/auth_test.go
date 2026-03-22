@@ -68,7 +68,9 @@ func TestAuthService_Login(t *testing.T) {
 					t.Fatalf("result.ExpiresAt = %v, want %v", result.ExpiresAt, now.Add(18*time.Hour))
 				}
 
-				parsed, err := jwt.ParseWithClaims(result.AccessToken, &claimsauth.Claims{}, func(token *jwt.Token) (interface{}, error) {
+				parser := jwt.NewParser(jwt.WithTimeFunc(func() time.Time { return now }))
+				parsed, err := parser.ParseWithClaims(result.AccessToken, &claimsauth.Claims{}, func(token *jwt.Token) (interface{},
+					error) {
 					return []byte("jwt-secret"), nil
 				})
 				if err != nil {
