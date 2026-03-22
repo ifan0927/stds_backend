@@ -11,6 +11,8 @@ import (
 	"github.com/ifan0927/stds-backend/internal/config"
 	"github.com/ifan0927/stds-backend/internal/handler"
 	"github.com/ifan0927/stds-backend/internal/middleware"
+	"github.com/ifan0927/stds-backend/internal/repository"
+	"github.com/ifan0927/stds-backend/internal/service"
 	"github.com/lmittmann/tint"
 	"gorm.io/gorm"
 )
@@ -39,10 +41,18 @@ func initLogger(cfg config.Config) (*slog.Logger, error) {
 
 // initRouter configures the Gin engine, shared middleware, health check, and API handlers.
 func initRouter(cfg config.Config, gormDB *gorm.DB) *gin.Engine {
+
+	repo := repository.NewAuthRepository(gormDB)
+	issuer := service.JWTIssuer{Secret: []byte(cfg.JWTSecret)}
+	loader := repository.NewStateLoader(gormDB)
+
+	authSvc := service.NewAuthService(repo, issuer, nil, cfg)
+	server := handler.NewServer(authSvc)
+
 	r := gin.New()
 	r.Use(middleware.Logger())
 	r.Use(middleware.ErrorHandler())
-	r.Use(middleware.AuthMiddleware(cfg))
+	r.Use(middleware.AuthMiddleware(cfg, loader))
 	r.Use(gin.Recovery())
 
 	r.GET("/healthz", func(c *gin.Context) {
@@ -63,8 +73,6 @@ func initRouter(cfg config.Config, gormDB *gorm.DB) *gin.Engine {
 			"status": "ok",
 		})
 	})
-
-	server := handler.NewServer()
 
 	strictHandler := api.NewStrictHandler(server, nil)
 

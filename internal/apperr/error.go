@@ -40,3 +40,29 @@ func NewForbiddenError(msg ...string) AppError {
 		Message:    message,
 	}
 }
+
+func NewValidationError(details []ErrorDetail, msg ...string) AppError {
+	message := "validation error"
+	if len(msg) > 0 {
+		message = msg[0]
+	}
+	return AppError{
+		HTTPStatus: http.StatusBadRequest,
+		Code:       CodeValidationError,
+		Message:    message,
+		Details:    details,
+	}
+}
+
+func NewTokenExpiredError(msg ...string) AppError {
+	message := "authorization error: access token expired"
+	if len(msg) > 0 {
+		message = msg[0]
+	}
+	return AppError{
+		HTTPStatus: http.StatusUnauthorized,
+		Code:       CodeTokenExpired,
+		Message:    message,
+	}
+
+}

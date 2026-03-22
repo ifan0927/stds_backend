@@ -1,13 +1,17 @@
 package config
 
-import "log/slog"
+import (
+	"log/slog"
+	"time"
+)
 
 // Config contains application settings loaded from environment variables.
 type Config struct {
-	Port      string `env:"PORT" envDefault:"8080"`
-	JWTSecret string `env:"JWT_SECRET,required"`
-	LogLevel  string `env:"LOG_LEVEL" envDefault:"info"`
-	DB        DBconfig
+	Port              string        `env:"PORT" envDefault:"8080"`
+	JWTSecret         string        `env:"JWT_SECRET,required"`
+	LogLevel          string        `env:"LOG_LEVEL" envDefault:"info"`
+	JWTAccessTokenTTL time.Duration `env:"JWT_ACCESS_TOKEN_TTL" envDefault:"18h"`
+	DB                DBconfig
 }
 
 // DBconfig contains database connection settings loaded from environment variables.
@@ -19,7 +23,8 @@ type DBconfig struct {
 func (c Config) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("port", c.Port),
-		slog.String("log_level", c.LogLevel))
+		slog.String("log_level", c.LogLevel),
+		slog.String("JWT_ACCESS_TOKEN_TTL", c.JWTAccessTokenTTL.String()))
 }
 
 // LogValue returns a redacted structured log representation of DBconfig.

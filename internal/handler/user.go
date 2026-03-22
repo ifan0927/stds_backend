@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/ifan0927/stds-backend/internal/api"
+	"github.com/ifan0927/stds-backend/internal/auth"
+	"github.com/ifan0927/stds-backend/internal/service"
 )
 
 func (s *Server) ListUsers(ctx context.Context, request api.ListUsersRequestObject) (api.ListUsersResponseObject, error) {
@@ -43,7 +45,20 @@ func (s *Server) ImportUsers(ctx context.Context, request api.ImportUsersRequest
 }
 
 func (s *Server) ChangeMyPassword(ctx context.Context, request api.ChangeMyPasswordRequestObject) (api.ChangeMyPasswordResponseObject, error) {
-	panic("not implemented")
+	userState, err := auth.GetCurrentUserState(ctx)
+	if err != nil {
+		return nil, err
+	}
+	input := service.ChangeMyPasswordInput{
+		UserID:          userState.UserID,
+		CurrentPassword: request.Body.CurrentPassword,
+		NewPassword:     request.Body.NewPassword,
+	}
+	err = s.authService.ChangeMyPassword(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	return api.ChangeMyPassword204Response{}, nil
 }
 
 func (s *Server) GetUser(ctx context.Context, request api.GetUserRequestObject) (api.GetUserResponseObject, error) {
