@@ -174,17 +174,8 @@ estateService := service.NewEstateService(
 - Auth middleware 驗證 token 後，將 `*auth.Claims` 與 `*auth.UserState` 存入 request context
 - Context 存取 helpers 命名規則：`XxxFromContext(ctx)`（如 `ClaimsFromContext`、`UserStateFromContext`），不使用 `GetXxx` 前綴
 - Middleware 傳遞 context 給下層時使用 `c.Request.Context()`，不直接傳 `*gin.Context`
-- JWT `Estates` 欄位結構（取代原本的 `EstateIDs []int64`）：
-
-```go
-type EstateAccess struct {
-    ID    int64  `json:"id"`
-    Level string `json:"level"` // "admin" | "readonly"
-}
-// Claims.Estates []EstateAccess
-```
-
-前端與 middleware 直接從 claims 取得 member_level，不需查 DB；staleness trade-off（18h）已接受。
+- JWT Claims 僅包含 `sub`（userID）、`username`、`role`（系統層角色 admin/user）、`exp`、`iat`；**物業存取清單不放入 JWT**
+- 物業層授權（member_level）由 `StateLoader` 在每次 request 動態從 DB 載入，結果存入 `*auth.UserState`；handler 從 `UserState` 取 estate 存取資訊
 
 ### ListEstates 授權 Filter 慣例
 

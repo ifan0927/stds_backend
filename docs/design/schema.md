@@ -22,7 +22,7 @@
 | short_title | VARCHAR(255) | NOT NULL | — | 物業簡稱，用於 Email 標題等。對應 API: `shortTitle` |
 | owner_user_id | BIGINT | NULL | — | FK → users(id)。業主系統使用者 ID。對應 API: `ownerUserId` |
 | owner_name | VARCHAR(255) | NOT NULL | — | 業主姓名。對應 API: `ownerName` |
-| owner_email | VARCHAR(255) | NOT NULL | — | 業主 Email。POST /v1/estates 必填（用於建立業主帳號），對應 API: `ownerEmail` |
+| owner_email | VARCHAR(255) | NULL | — | 業主 Email。API（POST/PUT /v1/estates）層必填，DB 允許 NULL 以容納歷史遷移資料中的空值。對應 API: `ownerEmail` |
 | address | VARCHAR(255) | NULL | — | 物業門牌地址。對應 API: `address` |
 | phone | VARCHAR(255) | NULL | — | 物業聯絡電話。對應 API: `phone` |
 | website | VARCHAR(255) | NULL | — | 物業官網網址。對應 API: `website` |
@@ -1010,7 +1010,7 @@
 > 對應 API 資源：`/v1/groups`、`/v1/groups/{groupId}`
 >
 > **設計決策：`xx_group_permission` 整體廢棄**
-> 舊系統 `xx_group_permission` 是 XOOPS 框架的模組功能權限機制，依賴 `gperm_modid`（xx_modules.mid）與框架耦合。新系統不使用 XOOPS 框架，存取控制由 JWT role（系統管理員 vs 一般使用者）+ `estate_member_links.member_level`（物業層級 admin/readonly）統一處理，不需要對應表格。
+> 舊系統 `xx_group_permission` 是 XOOPS 框架的模組功能權限機制，依賴 `gperm_modid`（xx_modules.mid）與框架耦合。新系統不使用 XOOPS 框架，存取控制由 JWT role（系統管理員 vs 一般使用者）+ `estate_member_links.member_level`（物業層級 admin/normal/readonly 三層）統一處理，不需要對應表格。
 >
 > **群組用途定位（新系統）**：群組為使用者的分類/篩選機制（如「業主」群組、「專案群組」），供物業成員分配（`GET /v1/users/available-members?groupId=xxx`）及 JWT payload 中的群組資訊（middleware 判斷 isBoss 等）使用。
 

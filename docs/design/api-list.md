@@ -273,7 +273,7 @@
 | PUT | /v1/groups/{groupId} | 更新群組資料（名稱、說明） | 建立群組（群組維護的對稱操作） |
 | DELETE | /v1/groups/{groupId} | 刪除群組 | 建立群組（群組維護的對稱操作） |
 
-> 💡 改善說明：舊系統 `xx_group_permission`（XOOPS 框架的模組功能權限機制）依賴 `gperm_modid`（xx_modules.mid）與 XOOPS 框架整合，新系統不使用 XOOPS 框架，此機制整體廢棄。新系統存取控制改為 JWT role（系統管理員 vs 一般使用者）+ estate_member level（物業層級的 admin/readonly 區分）統一處理，不需要 XOOPS 式的 group_permission 端點。
+> 💡 改善說明：舊系統 `xx_group_permission`（XOOPS 框架的模組功能權限機制）依賴 `gperm_modid`（xx_modules.mid）與 XOOPS 框架整合，新系統不使用 XOOPS 框架，此機制整體廢棄。新系統存取控制改為 JWT role（系統管理員 vs 一般使用者）+ estate_member level（物業層級的 admin/normal/readonly 三層區分）統一處理，不需要 XOOPS 式的 group_permission 端點。
 > 💡 改善說明：新增/移除使用者至群組（feature-list 第 2、3 項）已在模組六設計為 `POST /v1/users/actions/batch-add-group` 與 `POST /v1/users/actions/batch-remove-group`，模組七不重複設計，語意一致。
 > 💡 改善說明：依群組篩選可選成員（feature-list 第 4 項）已在物業管理模組設計為 `GET /v1/users/available-members?groupId=xxx`，模組七不重複設計。
 > 💡 改善說明：判斷使用者是否屬於業主群組（`isBoss`）與屬於專案群組（`send_to_group`）在舊系統為 PHP 函式，新系統由 JWT payload 中的 `roles` / `groupIds` 欄位提供，middleware 統一判斷，不設計為獨立 endpoint。
