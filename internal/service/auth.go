@@ -15,10 +15,14 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+const (
+	// minPasswordLength is the minimum accepted length for a new password.
+	minPasswordLength = 6
+)
+
 var (
 	// ErrNotFound marks repository lookups that did not match any row.
-	ErrNotFound    = errors.New("not found")
-	passwordLength = 6
+	ErrNotFound = errors.New("not found")
 )
 
 // AuthRepository defines the persistence methods required by the auth service.
@@ -165,7 +169,7 @@ func (s *authService) ChangeMyPassword(ctx context.Context, input ChangeMyPasswo
 	}
 	if strings.TrimSpace(input.NewPassword) == "" {
 		details = append(details, apperr.ErrorDetail{Field: "newPassword", Message: "newPassword is required"})
-	} else if len(input.NewPassword) < passwordLength {
+	} else if len(input.NewPassword) < minPasswordLength {
 		details = append(details, apperr.ErrorDetail{Field: "newPassword", Message: "newPassword must be at least 6 characters"})
 	}
 	if len(details) > 0 {
