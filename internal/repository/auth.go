@@ -89,22 +89,6 @@ func toServiceUser(row userRow) service.AuthUser {
 	}
 }
 
-// ListEstateIDsByUserID returns estate memberships for the given user.
-func (r *AuthRepository) ListEstateIDsByUserID(ctx context.Context, userID int64) ([]int64, error) {
-	var estateIds []int64
-	err := r.DB.WithContext(ctx).Model(&estateMemberLinkRow{}).
-		Where("user_id = ?", userID).
-		Pluck("estate_id", &estateIds).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, service.ErrNotFound
-		}
-		return nil, err
-	}
-
-	return estateIds, nil
-}
-
 // UpdateLastLoginAt stores the last successful login time for the given user.
 func (r *AuthRepository) UpdateLastLoginAt(ctx context.Context, userID int64, at time.Time) error {
 	_ = r.DB.WithContext(ctx).Model(&userRow{}).
@@ -150,20 +134,33 @@ func (r *AuthRepository) UpdatePasswordHash(ctx context.Context, userID int64, p
 
 // Load returns auth state required by middleware for the given user.
 func (r *AuthRepository) Load(ctx context.Context, userID int64) (auth.UserState, error) {
-	var row userRow
+	var userRow userRow
 	err := r.DB.WithContext(ctx).
 		Select("is_enabled", "password_changed_at").
-		First(&row, userID).Error
-
+		First(&userRow, userID).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return auth.UserState{}, auth.ErrUserNotFound
 	}
 	if err != nil {
 		return auth.UserState{}, err
 	}
+
+	var estateMemberRow []estateMemberLinkRow
+	if err = r.DB.WithContext(ctx).Model(&estateMemberLinkRow{}).
+		Where("user_id = ?", userID).
+		Scan(&estateMemberRow).Error; err != nil {
+		return auth.UserState{}, err
+	}
+
+	result := make(map[int64]string, len(estateMemberRow))
+	for _, r := range estateMemberRow {
+		result[r.EstateID] = r.MemberLevel
+	}
+
 	return auth.UserState{
 		UserID:            userID,
-		IsEnabled:         row.IsEnabled,
-		PasswordChangedAt: row.PasswordChangedAt,
+		IsEnabled:         userRow.IsEnabled,
+		PasswordChangedAt: userRow.PasswordChangedAt,
+		EstateRoles:       result,
 	}, nil
 }

@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 	"time"
 
@@ -41,9 +40,6 @@ func TestAuthService_Login(t *testing.T) {
 						IsEnabled:    true,
 						PasswordHash: passwordHash,
 					}, nil
-				},
-				listEstateIDsByUserIDFunc: func(ctx context.Context, userID int64) ([]int64, error) {
-					return []int64{1001, 1002}, nil
 				},
 				updateLastLoginAtFunc: func(ctx context.Context, userID int64, at time.Time) error {
 					if userID != 42 {
@@ -92,9 +88,6 @@ func TestAuthService_Login(t *testing.T) {
 				}
 				if claims.Role != "admin" {
 					t.Fatalf("claims.Role = %q, want %q", claims.Role, "admin")
-				}
-				if !reflect.DeepEqual(claims.EstateIDs, []int64{1001, 1002}) {
-					t.Fatalf("claims.EstateIDs = %#v, want %#v", claims.EstateIDs, []int{1001, 1002})
 				}
 				if claims.Subject != "42" {
 					t.Fatalf("claims.Subject = %q, want %q", claims.Subject, "42")
@@ -305,7 +298,6 @@ func TestAuthService_ChangeMyPassword(t *testing.T) {
 
 type authRepositoryStub struct {
 	findByUsernameFunc          func(ctx context.Context, username string) (AuthUser, error)
-	listEstateIDsByUserIDFunc   func(ctx context.Context, userID int64) ([]int64, error)
 	updateLastLoginAtFunc       func(ctx context.Context, userID int64, at time.Time) error
 	getPasswordHashByUserIDFunc func(ctx context.Context, userID int64) (string, error)
 	updatePasswordHashFunc      func(ctx context.Context, userID int64, passwordHash string) error
@@ -316,13 +308,6 @@ func (s *authRepositoryStub) FindByUsername(ctx context.Context, username string
 		return AuthUser{}, errors.New("unexpected FindByUsername call")
 	}
 	return s.findByUsernameFunc(ctx, username)
-}
-
-func (s *authRepositoryStub) ListEstateIDsByUserID(ctx context.Context, userID int64) ([]int64, error) {
-	if s.listEstateIDsByUserIDFunc == nil {
-		return nil, errors.New("unexpected ListEstateIDsByUserID call")
-	}
-	return s.listEstateIDsByUserIDFunc(ctx, userID)
 }
 
 func (s *authRepositoryStub) UpdateLastLoginAt(ctx context.Context, userID int64, at time.Time) error {

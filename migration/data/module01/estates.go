@@ -21,6 +21,8 @@ func MigrateEstates(ctx context.Context, db *pgxpool.Pool, inputDir string, dryR
 	}
 
 	sum := &shared.Summary{Table: "estates", Total: len(records)}
+	ownerNameFallbackCount := 0
+	ownerEmailNullCount := 0
 
 	for _, r := range records {
 		id := shared.Int64Val(r, "estate_id")
@@ -32,14 +34,13 @@ func MigrateEstates(ctx context.Context, db *pgxpool.Pool, inputDir string, dryR
 		ownerName := strings.TrimSpace(shared.StringVal(r, "estate_name"))
 		if ownerName == "" {
 			ownerName = title
+			ownerNameFallbackCount++
 			shared.Logger.Warn("estate_name empty, fallback to title", "estate_id", id)
 		}
 
-		ownerEmail := strings.TrimSpace(shared.StringVal(r, "estate_email"))
-		if ownerEmail == "" {
-			shared.Logger.Error("estate_email is required by current schema", "estate_id", id)
-			sum.Errors++
-			continue
+		ownerEmail := shared.NullableString(shared.StringVal(r, "estate_email"))
+		if ownerEmail == nil {
+			ownerEmailNullCount++
 		}
 		address := shared.NullableString(shared.StringVal(r, "estate_addr"))
 		phone := shared.NullableString(shared.StringVal(r, "estate_tel"))
@@ -139,5 +140,11 @@ func MigrateEstates(ctx context.Context, db *pgxpool.Pool, inputDir string, dryR
 
 	sum.Skipped = sum.Total - sum.Inserted - sum.Errors
 	sum.Log()
+	shared.Logger.Info("estate migration details",
+		"table", "estates",
+		"owner_name_fallback_count", ownerNameFallbackCount,
+		"owner_email_null_count", ownerEmailNullCount,
+		"dry_run", dryRun,
+	)
 	return nil
 }

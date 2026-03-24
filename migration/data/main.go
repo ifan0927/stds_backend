@@ -10,7 +10,7 @@
 //	  --module=seed     # development auth seed data
 //	  --module=all      # 01 -> 02 -> 01post in order
 //	  --input=./migration_input
-//	  --dry-run         # log actions without writing to DB
+//	  --dry-run         # validate against DB and log actions without writing to DB
 package main
 
 import (
@@ -41,15 +41,16 @@ func main() {
 
 	ctx := context.Background()
 
-	var pool *pgxpool.Pool
-	if !*dryRun {
-		var err error
-		pool, err = shared.NewDB(ctx)
-		if err != nil {
-			slog.Error("db connection failed", "error", err)
-			os.Exit(1)
-		}
-		defer pool.Close()
+	var err error
+	pool, err := shared.NewDB(ctx)
+	if err != nil {
+		slog.Error("db connection failed", "error", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	if *dryRun {
+		slog.Info("dry-run enabled: DB reads allowed for validation, writes are skipped")
 	}
 
 	switch *module {

@@ -13,4 +13,4 @@ CREATE        INDEX IF NOT EXISTS idx_estate_member_links_user   ON estate_membe
 
 ALTER TABLE estate_member_links
     ADD CONSTRAINT chk_estate_member_links_member_level
-    CHECK (member_level IN ('admin', 'readonly'));
+    CHECK (member_level IN ('admin', 'normal', 'readonly'));

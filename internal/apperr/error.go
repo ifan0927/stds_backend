@@ -68,6 +68,19 @@ func NewTokenExpiredError(msg ...string) AppError {
 	}
 }
 
+// NewEstateAccessDeniedError creates an AppError for authenticated users without access to the target estate.
+func NewEstateAccessDeniedError(msg ...string) AppError {
+	message := "access denied"
+	if len(msg) > 0 {
+		message = msg[0]
+	}
+	return AppError{
+		HTTPStatus: http.StatusForbidden,
+		Code:       CodeEstateAccessDenied,
+		Message:    message,
+	}
+}
+
 // WrapInternal converts an unexpected error into an internal AppError while preserving the cause.
 func WrapInternal(cause error) AppError {
 	return AppError{
