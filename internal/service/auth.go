@@ -23,7 +23,6 @@ var (
 // AuthRepository defines the persistence methods required by the auth service.
 type AuthRepository interface {
 	FindByUsername(ctx context.Context, username string) (AuthUser, error)
-	ListEstateIDsByUserID(ctx context.Context, userID int64) ([]int64, error)
 	UpdateLastLoginAt(ctx context.Context, userID int64, at time.Time) error
 	PasswordHashByUserID(ctx context.Context, userID int64) (string, error)
 	UpdatePasswordHash(ctx context.Context, userID int64, passwordHash string, at time.Time) error
@@ -126,18 +125,12 @@ func (s *authService) Login(ctx context.Context, input LoginInput) (LoginResult,
 		return LoginResult{}, invalidCredentialsError()
 	}
 
-	estateIDs, err := s.repo.ListEstateIDsByUserID(ctx, user.UserID)
-	if err != nil {
-		return LoginResult{}, apperr.WrapInternal(err)
-	}
-
 	issuedAt := s.now().UTC()
 	expiresAt := issuedAt.Add(s.cfg.JWTAccessTokenTTL)
 	token, err := s.issuer.IssueToken(auth.Claims{
-		UserID:    user.UserID,
-		Username:  user.Username,
-		Role:      user.Role,
-		EstateIDs: estateIDs,
+		UserID:   user.UserID,
+		Username: user.Username,
+		Role:     user.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   strconv.FormatInt(user.UserID, 10),
 			IssuedAt:  jwt.NewNumericDate(issuedAt),

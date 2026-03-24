@@ -172,10 +172,9 @@ func signedToken(t *testing.T, secret string, userID int64, subject string, issu
 	t.Helper()
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, auth.Claims{
-		UserID:    userID,
-		Username:  "alice",
-		Role:      "admin",
-		EstateIDs: []int64{1001},
+		UserID:   userID,
+		Username: "alice",
+		Role:     "admin",
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   subject,
 			IssuedAt:  jwt.NewNumericDate(issuedAt),
