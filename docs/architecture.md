@@ -81,6 +81,72 @@ migration/        ← golang-migrate SQL 檔案
 
 _待第一個模組完成後補充。_
 
+### 跨模組 Transaction 慣例
+
+**適用場景：** 單一 service 操作需要寫入多個 repository（如 Estate 建立時同步建立業主 User）。
+
+**兩種 service 結構，依是否需要 transaction 選擇：**
+
+| 情境 | Service struct 設計 |
+|---|---|
+| 單模組，不需要 tx | 持有 `repo XxxRepository`（interface instance） |
+| 跨模組，需要 tx | 持有 `db *gorm.DB` + `xxxRepo func(*gorm.DB) XxxRepository`（factory function） |
+
+**跨模組 tx 的 service 結構方向：**
+
+```go
+// service/estate.go
+type estateService struct {
+    db         *gorm.DB
+    estateRepo func(*gorm.DB) EstateRepository
+    userRepo   func(*gorm.DB) UserRepository  // 跨模組，interface 定義在此
+    groupRepo  func(*gorm.DB) GroupRepository // 跨模組，module 7 實作；interface 定義在此
+}
+
+func (s *estateService) Create(ctx context.Context, input CreateEstateInput) (*EstateRow, error) {
+    var result *EstateRow
+    err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+        estateRepo := s.estateRepo(tx)
+        userRepo   := s.userRepo(tx)
+        groupRepo  := s.groupRepo(tx)
+        // ... return nil = commit, return err = rollback
+    })
+    return result, err
+}
+```
+
+**Wiring（`cmd/server/setup.go`）：**
+
+```go
+estateService := service.NewEstateService(
+    db,
+    repository.NewEstateRepo,   // func(*gorm.DB) service.EstateRepository
+    repository.NewUserRepo,     // func(*gorm.DB) service.UserRepository
+    repository.NewGroupRepo,    // func(*gorm.DB) service.GroupRepository
+)
+```
+
+**重點：**
+- Repository struct 設計不變（持有 `DB *gorm.DB`），在 tx closure 內用 tx 建立 instance，`r.DB` 自動是 tx
+- 跨模組的 `UserRepository` interface 定義在 **使用方**（`service/estate.go`），只宣告 estate 需要的方法，不是 user 模組的全部
+- 不需要 tx 的 service（如 auth）完全不受影響，繼續用 instance 注入
+
+### Estate 業主帳號建立慣例
+
+`POST /v1/estates` 觸發的業主帳號建立流程，**在同一個 transaction 內完成**：
+
+1. 以 `ownerEmail` 查找 `users` 表，已存在則直接使用該 user ID
+2. 不存在：建立新 user（`ownerUsername` / `ownerName` / `ownerEmail` 來自 request，`role = 'user'`，隨機初始密碼 bcrypt hash 儲存）
+3. 若業主 user 尚未在「業主」user_group 中，將其加入（`GroupRepository.AddUserToOwnerGroup`，module 7 實作）
+4. 建立 estate，`owner_user_id` 指向上述 user
+5. 將業主加入 `estate_member_links`，`member_level = readonly`
+6. commit 後，由 Email 模組（模組九）非同步寄送初始密碼通知給業主（僅新建帳號時觸發）
+
+`PUT /v1/estates/:id` 更新時：
+- `ownerName` / `ownerEmail` 同步寫入對應 `users` 記錄（同一 transaction，使用 `UserRepository.UpdateOwnerInfo`）
+- 若 `ownerEmail` 異動且新 email 對應到**不同**的現有使用者，回傳 400（不允許透過 PUT 切換業主）
+- `user_group` 與 `estate_member_links` 不受 PUT 影響
+
 ### GORM Query 風格
 
 - 預設關閉 GORM 內建 logger，避免 SQL 與參數直接輸出到 stdout；需要慢查詢或額外觀測時再透過專案 logging 策略補上
@@ -108,6 +174,33 @@ _待第一個模組完成後補充。_
 - Auth middleware 驗證 token 後，將 `*auth.Claims` 與 `*auth.UserState` 存入 request context
 - Context 存取 helpers 命名規則：`XxxFromContext(ctx)`（如 `ClaimsFromContext`、`UserStateFromContext`），不使用 `GetXxx` 前綴
 - Middleware 傳遞 context 給下層時使用 `c.Request.Context()`，不直接傳 `*gin.Context`
+- JWT `Estates` 欄位結構（取代原本的 `EstateIDs []int64`）：
+
+```go
+type EstateAccess struct {
+    ID    int64  `json:"id"`
+    Level string `json:"level"` // "admin" | "readonly"
+}
+// Claims.Estates []EstateAccess
+```
+
+前端與 middleware 直接從 claims 取得 member_level，不需查 DB；staleness trade-off（18h）已接受。
+
+### ListEstates 授權 Filter 慣例
+
+`ListEstates` 由 handler 萃取 claims 後傳入 filter，service 不直接存取 auth package：
+
+```go
+type EstateListFilter struct {
+    AllowedIDs []int64 // nil = 不過濾（system admin）；非 nil = 只回傳清單內的物業
+}
+
+func (s *estateService) ListEstates(ctx context.Context, page, pagesize int, filter EstateListFilter) (PageInfo, []EstateSummary, error)
+```
+
+Handler 責任：
+- `role=admin`：傳入 `EstateListFilter{AllowedIDs: nil}`
+- `role=user`：從 `claims.Estates` 萃取 ID 清單，傳入 `EstateListFilter{AllowedIDs: ids}`
 
 ### Config / Bootstrap
 

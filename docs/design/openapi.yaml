@@ -1651,6 +1651,7 @@ paths:
         建立一筆新的日誌記錄。
         新增成功後自動建立一筆關聯帳務記錄（tag='日誌'），帳務金額預設為 0。
         新增後非同步發送 Email 通知給物業全體成員。
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: createSchedule
       tags: [Schedule]
       security:
@@ -1715,6 +1716,7 @@ paths:
         更新指定日誌的全部欄位（完整替換）。
         同時更新關聯帳務記錄的 title 與 date 欄位（同步日誌內容與日期）。
         更新後非同步發送 Email 通知給物業全體成員。
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: updateSchedule
       tags: [Schedule]
       security:
@@ -1747,6 +1749,7 @@ paths:
         刪除指定日誌。
         刪除流程：先嘗試刪除關聯帳務記錄，若帳務刪除失敗則整體取消，日誌保留。
         帳務刪除成功後，再刪除日誌本體（附件由檔案模組連帶處理）。
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: deleteSchedule
       tags: [Schedule]
       security:
@@ -1774,6 +1777,7 @@ paths:
         在指定日誌下新增一筆回應。
         回應日期由系統寫入當下時間（不允許 client 自訂）。
         新增後非同步發送 Email 通知給物業全體成員。
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: createReply
       tags: [Schedule]
       security:
@@ -2096,6 +2100,7 @@ paths:
       description: |
         更新指定回應的內容（完整替換）。
         回應日期由系統更新為當下時間（不允許 client 自訂，與舊系統 update_estate_reply 一致）。
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: updateReply
       tags: [Schedule]
       security:
@@ -2126,6 +2131,7 @@ paths:
       summary: 刪除日誌回應
       description: |
         刪除指定回應，同時連帶刪除該回應的所有附件（由檔案模組處理）。
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: deleteReply
       tags: [Schedule]
       security:
@@ -2827,6 +2833,7 @@ paths:
 
     post:
       summary: 上傳房間附件
+      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: uploadRoomAttachment
       tags: [Attachments]
       security:
@@ -2865,6 +2872,7 @@ paths:
 
     put:
       summary: 更新房間附件排序
+      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: sortRoomAttachments
       tags: [Attachments]
       security:
@@ -2905,6 +2913,7 @@ paths:
 
     patch:
       summary: 更新房間附件說明
+      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: updateRoomAttachment
       tags: [Attachments]
       security:
@@ -2933,7 +2942,7 @@ paths:
 
     delete:
       summary: 刪除房間附件
-      description: 同步刪除 Cloud Storage 物件與資料庫記錄。
+      description: 同步刪除 Cloud Storage 物件與資料庫記錄。需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: deleteRoomAttachment
       tags: [Attachments]
       security:
@@ -3214,6 +3223,7 @@ paths:
 
     post:
       summary: 上傳租期附件
+      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: uploadRentAttachment
       tags: [Attachments]
       security:
@@ -3252,6 +3262,7 @@ paths:
 
     put:
       summary: 更新租期附件排序
+      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: sortRentAttachments
       tags: [Attachments]
       security:
@@ -3320,6 +3331,7 @@ paths:
 
     delete:
       summary: 刪除租期附件
+      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: deleteRentAttachment
       tags: [Attachments]
       security:
@@ -3397,6 +3409,7 @@ paths:
 
     post:
       summary: 上傳日誌附件
+      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: uploadScheduleAttachment
       tags: [Attachments]
       security:
@@ -3435,6 +3448,7 @@ paths:
 
     put:
       summary: 更新日誌附件排序
+      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: sortScheduleAttachments
       tags: [Attachments]
       security:
@@ -3475,6 +3489,7 @@ paths:
 
     patch:
       summary: 更新日誌附件說明
+      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: updateScheduleAttachment
       tags: [Attachments]
       security:
@@ -3503,6 +3518,7 @@ paths:
 
     delete:
       summary: 刪除日誌附件
+      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: deleteScheduleAttachment
       tags: [Attachments]
       security:
@@ -3581,6 +3597,7 @@ paths:
 
     post:
       summary: 上傳日誌回應附件
+      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: uploadReplyAttachment
       tags: [Attachments]
       security:
@@ -3661,6 +3678,7 @@ paths:
 
     patch:
       summary: 更新回應附件說明
+      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: updateReplyAttachment
       tags: [Attachments]
       security:
@@ -3689,6 +3707,7 @@ paths:
 
     delete:
       summary: 刪除回應附件
+      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: deleteReplyAttachment
       tags: [Attachments]
       security:
@@ -4353,8 +4372,8 @@ components:
           example: 主承辦人
         memberLevel:
           type: string
-          enum: [admin, readonly]
-          description: 管理權限（admin=管理員，readonly=唯讀/通知成員）
+          enum: [admin, normal, readonly]
+          description: 管理權限（admin=管理員可完整 CRUD，normal=一般成員可寫入但不可刪除不可逆資源，readonly=唯讀/通知成員）
           example: admin
         calendarTextColor:
           type: string
@@ -4393,8 +4412,8 @@ components:
           example: 主承辦人
         memberLevel:
           type: string
-          enum: [admin, readonly]
-          description: 管理權限
+          enum: [admin, normal, readonly]
+          description: 管理權限（admin=管理員，normal=一般成員，readonly=唯讀）
           example: admin
         calendarTextColor:
           type: string

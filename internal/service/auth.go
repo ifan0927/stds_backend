@@ -15,11 +15,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var (
-	// ErrNotFound marks repository lookups that did not match any row.
-	ErrNotFound = errors.New("not found")
-)
-
 // AuthRepository defines the persistence methods required by the auth service.
 type AuthRepository interface {
 	FindByUsername(ctx context.Context, username string) (AuthUser, error)

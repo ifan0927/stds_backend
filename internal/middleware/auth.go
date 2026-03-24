@@ -87,6 +87,7 @@ func extractToken(c *gin.Context, bearerToken string, secret []byte, now func() 
 	if errors.Is(err, jwt.ErrTokenExpired) {
 		appErr := apperr.NewTokenExpiredError()
 		c.AbortWithStatusJSON(appErr.HTTPStatus, appErr)
+
 		return nil, false
 	}
 	if err != nil {

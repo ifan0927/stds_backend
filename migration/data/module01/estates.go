@@ -35,7 +35,12 @@ func MigrateEstates(ctx context.Context, db *pgxpool.Pool, inputDir string, dryR
 			shared.Logger.Warn("estate_name empty, fallback to title", "estate_id", id)
 		}
 
-		ownerEmail := shared.NullableString(shared.StringVal(r, "estate_email"))
+		ownerEmail := strings.TrimSpace(shared.StringVal(r, "estate_email"))
+		if ownerEmail == "" {
+			shared.Logger.Error("estate_email is required by current schema", "estate_id", id)
+			sum.Errors++
+			continue
+		}
 		address := shared.NullableString(shared.StringVal(r, "estate_addr"))
 		phone := shared.NullableString(shared.StringVal(r, "estate_tel"))
 		website := shared.NullableString(shared.StringVal(r, "estate_web"))
