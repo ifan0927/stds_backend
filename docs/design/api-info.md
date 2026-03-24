@@ -10,16 +10,20 @@
 1. 驗證請求者具備系統管理員角色（`role=admin`）
 2. 驗證必填欄位（title、shortTitle、ownerName、ownerEmail、electricityRate、electricityBillingCycle）
 3. 驗證 ownerEmail 格式合法
-4. 查詢資料庫是否已有相同 email 的使用者帳號
+4. 以 ownerEmail 查詢資料庫是否已有相同 email 的使用者帳號
    - 若有：取得現有使用者的 userId
-   - 若無：自動建立新使用者帳號，帳號名稱取 email `@` 前段，初始密碼由系統產生並以 email 發送，並將新使用者加入「業主」群組
-5. 若使用者已存在但尚未在「業主」群組，將其加入
+   - 若無：自動建立新使用者帳號，username 取 ownerUsername，`role = 'user'`，初始密碼隨機產生
+5. 若業主 user 尚未在「業主」user_group 中，將其加入
 6. 寫入 estates 資料表，關聯 ownerUserId
-7. 回傳 201 + Location header + 完整物業詳情
+7. 將業主加入 estate_member_links，member_level = readonly
+8. commit 後非同步觸發 Email 通知（若為新建帳號，寄送初始密碼給 ownerEmail）
+9. 回傳 201 + Location header + 完整物業詳情
+
+> 步驟 4–7 在同一個 transaction 內完成；步驟 8 在 commit 後執行。
 
 ### Side Effects
-- Email 通知：若自動建立業主帳號，寄送帳號開通通知 Email 給 ownerEmail
-- 其他副作用：自動建立系統使用者帳號（若同 email 帳號不存在）；自動將業主帳號加入「業主」群組
+- Email 通知：若自動建立業主帳號（步驟 4 無：分支），commit 後寄送帳號開通通知（含初始密碼）給 ownerEmail
+- 其他副作用：自動建立系統使用者帳號（若同 email 帳號不存在）；將業主加入「業主」user_group；將業主加入 estate_member_links（member_level = readonly）
 
 ### PHP 參考
 - `estate/index.php:insert_estate`（L121-214）
@@ -35,12 +39,13 @@
 2. 驗證 estateId 存在
 3. 驗證 JWT 中 estateId 授權範圍（middleware）
 4. 驗證必填欄位
-5. 更新 estates 資料表
-6. 回傳 200 + 完整更新後的物業詳情
+5. 若 ownerEmail 異動，驗證新 email 是否對應到**不同**的現有使用者；若是則回傳 400（不允許透過 PUT 切換業主）
+6. 更新 estates 資料表；若 ownerEmail / ownerName 有異動，在同一 transaction 內同步更新對應的 users 記錄
+7. 回傳 200 + 完整更新後的物業詳情
 
 ### Side Effects
 - Email 通知：無
-- 其他副作用：若 ownerEmail 異動，不自動重建帳號（僅更新 ownerEmail 欄位）
+- 其他副作用：若 ownerEmail / ownerName 異動，同步更新 users 表對應欄位（同一 transaction）；不重建帳號，不更動 user_group / estate_member_links
 
 ### PHP 參考
 - `estate/index.php:update_estate`（L217-280）
@@ -89,12 +94,13 @@
 ### 業務邏輯步驟
 1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
 2. 驗證 estateId 存在
-3. 驗證每個 userId 存在於使用者資料表
-4. 取得現有成員清單，比對差異：
+3. 驗證 userIds 陣列無重複值；若有重複回傳 400 `VALIDATION_ERROR`
+4. 驗證每個 userId 存在於使用者資料表
+5. 取得現有成員清單，比對差異：
    - 新增：在 estate_member_links 建立記錄，memberLevel 預設為 `readonly`
    - 移除：從 estate_member_links 刪除記錄（保留 estate_mems 個人設定不刪除，避免重新加入時需重設）
    - 無變化：保留
-5. 回傳 200 + 完整成員清單
+6. 回傳 200 + 完整成員清單
 
 ### Side Effects
 - Email 通知：無
@@ -110,7 +116,7 @@
 
 ### 業務邏輯步驟
 1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
-2. 驗證 estateId 存在，estateId 在 JWT 授權範圍內
+2. 驗證 estateId 存在（middleware 已驗 UserState 包含此 estateId 的存取權）
 3. 驗證 userId 存在於此物業的成員清單（estate_member_links）
 4. 若提供 calendarTextColor 或 calendarBgColor，驗證格式為合法 hex 色碼（`#RRGGBB`）
 5. 更新 estate_member_links 的 memberLevel（若提供）
@@ -132,10 +138,11 @@
 1. 驗證請求者具備此物業的管理員權限或系統管理員
 2. 驗證 estateId 存在
 3. 驗證 roomNumber 不為空
-4. 若提供 zone，驗證 zone 值存在於 estate.zones 清單中
-5. 若未提供 sortOrder，自動取現有最大排序 + 1
-6. 寫入 rooms 資料表
-7. 回傳 201 + Location header + 完整房間詳情
+4. 驗證同 estate 內 roomNumber 不重複；若重複回傳 409 `ROOM_NUMBER_ALREADY_EXISTS`
+5. 若提供 zone，驗證 zone 值存在於 estate.zones 清單中
+6. 若未提供 sortOrder，自動取現有最大排序 + 1
+7. 寫入 rooms 資料表
+8. 回傳 201 + Location header + 完整房間詳情
 
 ### Side Effects
 - Email 通知：無
@@ -190,11 +197,12 @@
 2. 驗證 roomId 存在且屬於 estateId
 3. 讀取原房間所有欄位
 4. 計算新房號：取原房號首字元 + (原末尾數字 + 1)，例如 A101 → A102
-5. 新 sortOrder = 原 sortOrder + 1
-6. 複製欄位：facilities、prices、note、zone、storey、roomType、sizeSquareMeter
-7. 寫入新房間記錄
-8. 附件不複製（舊系統有複製附件邏輯，新系統實作時由檔案模組確認後決定）
-9. 回傳 201 + Location header + 完整新房間詳情
+5. 驗證計算出的新房號在同 estate 內不重複；若重複回傳 409 `ROOM_NUMBER_ALREADY_EXISTS`
+6. 新 sortOrder = 原 sortOrder + 1
+7. 複製欄位：facilities、prices、note、zone、storey、roomType、sizeSquareMeter
+8. 寫入新房間記錄
+9. 附件不複製（舊系統有複製附件邏輯，新系統實作時由檔案模組確認後決定）
+10. 回傳 201 + Location header + 完整新房間詳情
 
 ### Side Effects
 - Email 通知：無
@@ -210,9 +218,10 @@
 ### 業務邏輯步驟
 1. 驗證請求者具備此物業的管理員權限或系統管理員
 2. 驗證 estateId 存在
-3. 驗證提交清單中的所有 roomId 均屬於 estateId；若有不屬於的 roomId 回傳 `VALIDATION_ERROR`
-4. 批次更新 rooms 的 sortOrder
-5. 回傳 200 + 更新後的排序清單
+3. 允許空清單（estate 目前無房間時合法）；空清單時跳過後續步驟，直接回傳 200 空陣列
+4. 驗證提交清單中的所有 roomId 均屬於 estateId；若有不屬於的 roomId 回傳 `VALIDATION_ERROR`
+5. 批次更新 rooms 的 sortOrder
+6. 回傳 200 + 更新後的排序清單
 
 ### Side Effects
 - Email 通知：無
@@ -288,7 +297,7 @@
 
 ### 業務邏輯步驟
 1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
-2. 驗證 estateId 存在，且在 JWT 授權範圍內
+2. 驗證 estateId 存在（middleware 已驗 UserState 包含此 estateId 的存取權）
 3. 驗證必填欄位（roomId、startDate、endDate、paymentMethod、deposit、initialElectricReading）
 4. 驗證 endDate > startDate
 5. 若提供 earlyMoveInDate，驗證 earlyMoveInDate <= startDate
@@ -487,7 +496,7 @@
 
 ### 業務邏輯步驟
 1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
-2. 驗證 estateId 存在且在 JWT 授權範圍內
+2. 驗證 estateId 存在（middleware 已驗 UserState 包含此 estateId 的存取權）
 3. 驗證 items 陣列不為空
 4. 對每個 item 驗證：
    a. roomId 存在且屬於此 estateId；若不屬於回傳 400 `VALIDATION_ERROR`（details.field = items[n].roomId）
@@ -511,7 +520,7 @@
 ## GET /v1/estates/{estateId}/electric-report
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且在 JWT 授權範圍內
+1. 驗證請求者已認證（middleware 已驗 UserState 包含此 estateId；任何 member_level 均可存取）
 2. 驗證 estateId 存在
 3. 驗證 year、month query 參數必填且範圍合法
 4. 查詢此物業所有房間及各房間當月（year/month）與前一個月（year/month-1）的電錶度數
@@ -533,7 +542,7 @@
 ## GET /v1/estates/{estateId}/electric-receipt
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且在 JWT 授權範圍內
+1. 驗證請求者已認證（middleware 已驗 UserState 包含此 estateId；任何 member_level 均可存取）
 2. 驗證 estateId 存在
 3. 驗證 year、month query 參數必填且範圍合法
 4. 查詢此物業所有有現役租約的房間，以及各房間當月與前一個月的電錶度數
@@ -558,7 +567,7 @@
 ## POST /v1/estates/{estateId}/schedules
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且在 JWT 授權範圍內（estateId 在 JWT 授權範圍）
+1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證必填欄位（scheduledAt、kind、status、content）
 3. 若 roomId 有值，驗證該 roomId 屬於此 estateId（否則回傳 ROOM_NOT_FOUND）
 4. 若 reporterUserId 有值，驗證該 userId 存在；不帶時取 JWT 當前使用者
@@ -588,7 +597,7 @@
 ## PUT /v1/estates/{estateId}/schedules/{scheduleId}
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且在 JWT 授權範圍內
+1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 scheduleId 存在且屬於此 estateId（否則回傳 SCHEDULE_NOT_FOUND）
 3. 驗證必填欄位（scheduledAt、kind、status、content）
 4. 若 roomId 有值，驗證該 roomId 屬於此 estateId
@@ -613,7 +622,7 @@
 ## DELETE /v1/estates/{estateId}/schedules/{scheduleId}
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且在 JWT 授權範圍內
+1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 scheduleId 存在且屬於此 estateId（否則回傳 SCHEDULE_NOT_FOUND）
 3. 嘗試刪除關聯帳務記錄（依 table='estate_schedule'、colName='estate_schedule_id'、colSn=scheduleId 批次刪除）
    - 若帳務刪除失敗：回傳 409 CANNOT_DELETE_HAS_ACCOUNTING，日誌保留，流程終止
@@ -634,7 +643,7 @@
 ## POST /v1/estates/{estateId}/schedules/{scheduleId}/replies
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且在 JWT 授權範圍內
+1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 scheduleId 存在且屬於此 estateId（否則回傳 SCHEDULE_NOT_FOUND）
 3. 驗證必填欄位（content）
 4. 若 authorUserId 有值，驗證該 userId 存在；不帶時取 JWT 當前使用者
@@ -656,7 +665,7 @@
 ## PUT /v1/estates/{estateId}/schedules/{scheduleId}/replies/{replyId}
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且在 JWT 授權範圍內
+1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 scheduleId 存在且屬於此 estateId（否則回傳 SCHEDULE_NOT_FOUND）
 3. 驗證 replyId 存在且屬於此 scheduleId（若不存在回傳 SCHEDULE_NOT_FOUND）
 4. 驗證必填欄位（content）
@@ -676,7 +685,7 @@
 ## DELETE /v1/estates/{estateId}/schedules/{scheduleId}/replies/{replyId}
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且在 JWT 授權範圍內
+1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 scheduleId 存在且屬於此 estateId（否則回傳 SCHEDULE_NOT_FOUND）
 3. 驗證 replyId 存在且屬於此 scheduleId（若不存在回傳 SCHEDULE_NOT_FOUND）
 4. 刪除 replies 資料表對應記錄
@@ -700,7 +709,7 @@
 
 ### 業務邏輯步驟
 1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
-2. 驗證 estateId 存在且在 JWT 授權範圍內
+2. 驗證 estateId 存在（middleware 已驗 UserState 包含此 estateId 的存取權）
 3. 驗證必填欄位（accountingDate、income、expenditure）
 4. 驗證 income >= 0 且 expenditure >= 0
 5. 驗證 income 與 expenditure 不可同時為非零值（一筆帳務只能是收入或支出）
@@ -765,7 +774,7 @@
 
 ### 業務邏輯步驟（複雜查詢，需列出）
 1. 驗證請求者具備此物業的管理員權限或系統管理員
-2. 驗證 estateId 存在且在 JWT 授權範圍內
+2. 驗證 estateId 存在（middleware 已驗 UserState 包含此 estateId 的存取權）
 3. 若提供 periodFrom，驗證日期格式合法（YYYY-MM-DD）；不提供時預設當月 1 日
 4. 若提供 periodTo，驗證日期格式合法（YYYY-MM-DD）；不提供時預設今日
 5. 驗證 periodFrom <= periodTo；若不合法回傳 `VALIDATION_ERROR`
@@ -804,10 +813,9 @@
 2. 查詢 users 資料表，依 username 查找使用者；若不存在回傳 401 `INVALID_CREDENTIALS`
 3. 驗證使用者帳號為啟用狀態（isEnabled=true）；若停用回傳 401 `INVALID_CREDENTIALS`（不揭示帳號停用資訊）
 4. 以 bcrypt 驗證 password 是否與資料庫中的 hash 相符；若不符回傳 401 `INVALID_CREDENTIALS`
-5. 查詢使用者被授權的物業 ID 清單（透過 estate_member_links WHERE user_id = ?，用於 JWT payload estateIds）
-6. 產生 JWT，payload 包含：sub（userId）、username、role（系統層角色 admin/user）、estateIds（授權的物業 ID 清單）、exp（到期時間，18h 後）、iat（簽發時間）
-7. 更新 users 資料表的 lastLoginAt 為當下時間
-8. 回傳 200 + `access_token`（JWT）+ `expiresAt`（過期時間）+ `user`（使用者詳情）
+5. 產生 JWT，payload 包含：sub（userId）、username、role（系統層角色 admin/user）、exp（到期時間，18h 後）、iat（簽發時間）；物業存取清單不放入 JWT，由 StateLoader 於每次 request 動態載入
+6. 更新 users 資料表的 lastLoginAt 為當下時間
+7. 回傳 200 + `access_token`（JWT）+ `expiresAt`（過期時間）+ `user`（使用者詳情）
 
 ### Side Effects
 - Email 通知：無
@@ -1062,7 +1070,7 @@
 ## POST /v1/estates/{estateId}/rooms/{roomId}/attachments
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且 estateId 在 JWT 授權範圍內（middleware 處理）
+1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 estateId 存在；若不存在回傳 404 `ESTATE_NOT_FOUND`
 3. 驗證 roomId 存在且屬於 estateId；若不存在回傳 404 `ROOM_NOT_FOUND`
 4. 驗證上傳檔案存在（multipart file 欄位不可為空）；若無檔案回傳 400 `VALIDATION_ERROR`
@@ -1086,7 +1094,7 @@
 ## DELETE /v1/estates/{estateId}/rooms/{roomId}/attachments/{attachmentId}
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且 estateId 在 JWT 授權範圍內
+1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 roomId 存在且屬於 estateId；若不存在回傳 404 `ROOM_NOT_FOUND`
 3. 驗證 attachmentId 存在且屬於此 roomId；若不存在回傳 404 `ATTACHMENT_NOT_FOUND`
 4. 從資料庫取得 storageObjectPath
@@ -1106,7 +1114,7 @@
 ## GET /v1/estates/{estateId}/rooms/{roomId}/attachments/{attachmentId}/download
 
 ### 業務邏輯步驟（複雜查詢，列出）
-1. 驗證請求者已認證且 estateId 在 JWT 授權範圍內
+1. 驗證請求者已認證（middleware 已驗 UserState 包含此 estateId；任何 member_level 均可存取）
 2. 驗證 roomId 存在且屬於 estateId
 3. 驗證 attachmentId 存在且屬於此 roomId；若不存在回傳 404 `ATTACHMENT_NOT_FOUND`
 4. 從資料庫取得 storageObjectPath
@@ -1127,7 +1135,7 @@
 ## PATCH /v1/estates/{estateId}/rooms/{roomId}/attachments/{attachmentId}
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且 estateId 在 JWT 授權範圍內
+1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 roomId 存在且屬於 estateId
 3. 驗證 attachmentId 存在且屬於此 roomId；若不存在回傳 404 `ATTACHMENT_NOT_FOUND`
 4. 更新 attachments 資料表的 description 欄位（null 時清空說明）
@@ -1145,7 +1153,7 @@
 ## PUT /v1/estates/{estateId}/rooms/{roomId}/attachments/sort
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且 estateId 在 JWT 授權範圍內
+1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 roomId 存在且屬於 estateId
 3. 驗證 attachmentIds 陣列不為空
 4. 驗證 attachmentIds 中的每個 ID 均屬於此 roomId（比對資料庫）；若有不屬於的 ID 回傳 400 `VALIDATION_ERROR`
@@ -1165,7 +1173,7 @@
 ## POST /v1/estates/{estateId}/rents/{rentId}/attachments
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且 estateId 在 JWT 授權範圍內
+1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 rentId 存在且屬於 estateId；若不存在回傳 404 `RENT_NOT_FOUND`
 3. 驗證上傳檔案存在，檔案大小 <= 50MB
 4. 讀取檔案 MIME type（伺服器端偵測）
@@ -1187,7 +1195,7 @@
 ## DELETE /v1/estates/{estateId}/rents/{rentId}/attachments/{attachmentId}
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且 estateId 在 JWT 授權範圍內
+1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 rentId 存在且屬於 estateId；若不存在回傳 404 `RENT_NOT_FOUND`
 3. 驗證 attachmentId 存在且屬於此 rentId；若不存在回傳 404 `ATTACHMENT_NOT_FOUND`
 4. 從資料庫取得 storageObjectPath，刪除 Cloud Storage 物件
@@ -1206,7 +1214,7 @@
 ## POST /v1/estates/{estateId}/schedules/{scheduleId}/attachments
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且 estateId 在 JWT 授權範圍內
+1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 scheduleId 存在且屬於 estateId；若不存在回傳 404 `SCHEDULE_NOT_FOUND`
 3. 驗證上傳檔案存在，檔案大小 <= 50MB
 4. 讀取檔案 MIME type（伺服器端偵測）
@@ -1228,7 +1236,7 @@
 ## DELETE /v1/estates/{estateId}/schedules/{scheduleId}/attachments/{attachmentId}
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且 estateId 在 JWT 授權範圍內
+1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 scheduleId 存在且屬於 estateId；若不存在回傳 404 `SCHEDULE_NOT_FOUND`
 3. 驗證 attachmentId 存在且屬於此 scheduleId；若不存在回傳 404 `ATTACHMENT_NOT_FOUND`
 4. 從資料庫取得 storageObjectPath，刪除 Cloud Storage 物件
@@ -1247,7 +1255,7 @@
 ## POST /v1/estates/{estateId}/schedules/{scheduleId}/replies/{replyId}/attachments
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且 estateId 在 JWT 授權範圍內
+1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 scheduleId 存在且屬於 estateId；若不存在回傳 404 `SCHEDULE_NOT_FOUND`
 3. 驗證 replyId 存在且屬於此 scheduleId；若不存在回傳 404 `SCHEDULE_NOT_FOUND`（reply 沿用相同 error code）
 4. 驗證上傳檔案存在，檔案大小 <= 50MB
@@ -1270,7 +1278,7 @@
 ## DELETE /v1/estates/{estateId}/schedules/{scheduleId}/replies/{replyId}/attachments/{attachmentId}
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且 estateId 在 JWT 授權範圍內
+1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 scheduleId 存在且屬於 estateId；若不存在回傳 404 `SCHEDULE_NOT_FOUND`
 3. 驗證 replyId 存在且屬於此 scheduleId
 4. 驗證 attachmentId 存在且屬於此 replyId；若不存在回傳 404 `ATTACHMENT_NOT_FOUND`

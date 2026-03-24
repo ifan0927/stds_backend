@@ -22,7 +22,7 @@
 | short_title | VARCHAR(255) | NOT NULL | — | 物業簡稱，用於 Email 標題等。對應 API: `shortTitle` |
 | owner_user_id | BIGINT | NULL | — | FK → users(id)。業主系統使用者 ID。對應 API: `ownerUserId` |
 | owner_name | VARCHAR(255) | NOT NULL | — | 業主姓名。對應 API: `ownerName` |
-| owner_email | VARCHAR(255) | NULL | — | 業主 Email。可為空，業主 email 為選填聯絡資訊。對應 API: `ownerEmail` |
+| owner_email | VARCHAR(255) | NULL | — | 業主 Email。API（POST/PUT /v1/estates）層必填，DB 允許 NULL 以容納歷史遷移資料中的空值。對應 API: `ownerEmail` |
 | address | VARCHAR(255) | NULL | — | 物業門牌地址。對應 API: `address` |
 | phone | VARCHAR(255) | NULL | — | 物業聯絡電話。對應 API: `phone` |
 | website | VARCHAR(255) | NULL | — | 物業官網網址。對應 API: `website` |
@@ -129,7 +129,7 @@
 | id | BIGSERIAL | NOT NULL | — | 主鍵（替代複合主鍵，便於關聯操作） |
 | estate_id | BIGINT | NOT NULL | — | FK → estates(id)。所屬物業 |
 | user_id | BIGINT | NOT NULL | — | FK → users(id)。成員使用者 ID |
-| member_level | VARCHAR(20) | NOT NULL | 'readonly' | 管理權限。CHECK 約束值：`admin`（管理員）、`readonly`（唯讀/通知成員）。舊欄位：`estate_mem_level` ENUM('0','1') → '1'=admin, '0'=readonly。對應 API: `memberLevel` |
+| member_level | VARCHAR(20) | NOT NULL | 'readonly' | 管理權限。CHECK 約束值：`admin`（管理員，完整 CRUD 含刪除）、`normal`（一般成員，可寫入日誌/回覆/附件，不可刪除租約/帳務等不可逆操作）、`readonly`（唯讀/通知成員）。舊欄位：`estate_mem_level` ENUM('0','1') → '1'=admin, '0'=readonly。對應 API: `memberLevel` |
 | created_at | TIMESTAMPTZ | NOT NULL | now() | 建立時間 |
 | updated_at | TIMESTAMPTZ | NOT NULL | now() | 更新時間 |
 
@@ -144,11 +144,11 @@
 - `user_id` → `users(id)` ON DELETE CASCADE
 
 **CHECK 約束：**
-- `CHECK (member_level IN ('admin', 'readonly'))`
+- `CHECK (member_level IN ('admin', 'normal', 'readonly'))`
 
 **舊系統對應：**
 - 對應舊表：`xx_estate_mem_link`（複合主鍵 estate_mem_uid + estate_id）
-- 舊系統 `estate_mem_level` ENUM('0','1') → 新系統 `member_level` VARCHAR CHECK('admin','readonly')
+- 舊系統 `estate_mem_level` ENUM('0','1') → 新系統 `member_level` VARCHAR CHECK('admin','normal','readonly')；`normal` 為新增層級，舊系統無對應值，遷移時 '0'=readonly 保留為 `readonly`
 
 ---
 
@@ -941,7 +941,7 @@
 
 5. **user_avatar 的 NOT NULL 預設值取消**：舊系統強制 `NOT NULL DEFAULT 'blank.gif'`，新系統以 NULL 表示「未設定大頭貼」，由應用層決定預設顯示邏輯，DB 不強制預設圖。
 
-6. **role 欄位（新增）**：新系統存取控制分兩層：系統層（`users.role`）+ 物業層（`estate_member_links.member_level`）。`role = 'admin'` 的使用者可執行全系統管理操作（新增/刪除物業、管理使用者與群組）；`role = 'user'` 只能存取被授權的物業。此欄位同步放入 JWT claims 供 middleware 快速判斷，不需每次查 DB。舊系統無此概念（透過 XOOPS `group_type` 判斷），新系統明確化為 DB 欄位。
+6. **role 欄位（新增）**：新系統存取控制分兩層：系統層（`users.role`）+ 物業層（`estate_member_links.member_level`）。`role = 'admin'` 的使用者可執行全系統管理操作（新增/刪除物業、管理使用者與群組）；`role = 'user'` 只能存取被授權的物業。`users.role` 放入 JWT claims 供 middleware 快速判斷系統層權限；物業存取清單（`estate_member_links.member_level`）於每次 request 由 StateLoader 從 DB 動態載入，存入 request context，不放入 JWT。舊系統無此概念（透過 XOOPS `group_type` 判斷），新系統明確化為 DB 欄位。
 
 7. **groups 關聯**：API `UserDetail.groups` 陣列透過 `user_group_links` 中間表管理（模組七設計），`users` 表本身無群組欄位。
 
@@ -1010,7 +1010,7 @@
 > 對應 API 資源：`/v1/groups`、`/v1/groups/{groupId}`
 >
 > **設計決策：`xx_group_permission` 整體廢棄**
-> 舊系統 `xx_group_permission` 是 XOOPS 框架的模組功能權限機制，依賴 `gperm_modid`（xx_modules.mid）與框架耦合。新系統不使用 XOOPS 框架，存取控制由 JWT role（系統管理員 vs 一般使用者）+ `estate_member_links.member_level`（物業層級 admin/readonly）統一處理，不需要對應表格。
+> 舊系統 `xx_group_permission` 是 XOOPS 框架的模組功能權限機制，依賴 `gperm_modid`（xx_modules.mid）與框架耦合。新系統不使用 XOOPS 框架，存取控制由 JWT role（系統管理員 vs 一般使用者）+ `estate_member_links.member_level`（物業層級 admin/normal/readonly 三層）統一處理，不需要對應表格。
 >
 > **群組用途定位（新系統）**：群組為使用者的分類/篩選機制（如「業主」群組、「專案群組」），供物業成員分配（`GET /v1/users/available-members?groupId=xxx`）及 JWT payload 中的群組資訊（middleware 判斷 isBoss 等）使用。
 

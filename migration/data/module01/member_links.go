@@ -19,44 +19,47 @@ func MigrateMemberLinks(ctx context.Context, db *pgxpool.Pool, inputDir string, 
 
 	validEstates := map[int64]bool{}
 	validUsers := map[int64]bool{}
-	if !dryRun {
-		estateRows, err := db.Query(ctx, `SELECT id FROM estates`)
-		if err != nil {
-			return fmt.Errorf("load estates: %w", err)
+	estateRows, err := db.Query(ctx, `SELECT id FROM estates`)
+	if err != nil {
+		return fmt.Errorf("load estates: %w", err)
+	}
+	defer estateRows.Close()
+	for estateRows.Next() {
+		var id int64
+		if err := estateRows.Scan(&id); err != nil {
+			return err
 		}
-		defer estateRows.Close()
-		for estateRows.Next() {
-			var id int64
-			if err := estateRows.Scan(&id); err != nil {
-				return err
-			}
-			validEstates[id] = true
-		}
+		validEstates[id] = true
+	}
 
-		userRows, err := db.Query(ctx, `SELECT id FROM users`)
-		if err != nil {
-			return fmt.Errorf("load users: %w", err)
+	userRows, err := db.Query(ctx, `SELECT id FROM users`)
+	if err != nil {
+		return fmt.Errorf("load users: %w", err)
+	}
+	defer userRows.Close()
+	for userRows.Next() {
+		var id int64
+		if err := userRows.Scan(&id); err != nil {
+			return err
 		}
-		defer userRows.Close()
-		for userRows.Next() {
-			var id int64
-			if err := userRows.Scan(&id); err != nil {
-				return err
-			}
-			validUsers[id] = true
-		}
+		validUsers[id] = true
 	}
 
 	sum := &shared.Summary{Table: "estate_member_links", Total: len(records)}
+	adminCount := 0
+	normalCount := 0
+	readonlyCount := 0
+	fkMissingCount := 0
 
 	for _, r := range records {
 		estateID := shared.Int64Val(r, "estate_id")
 		userID := shared.Int64Val(r, "estate_mem_uid")
 		levelRaw := shared.StringVal(r, "estate_mem_level")
 
-		if !dryRun && (!validEstates[estateID] || !validUsers[userID]) {
+		if !validEstates[estateID] || !validUsers[userID] {
 			shared.Logger.Warn("skip member_link: FK not found",
 				"estate_id", estateID, "user_id", userID)
+			fkMissingCount++
 			sum.Skipped++
 			continue
 		}
@@ -65,8 +68,10 @@ func MigrateMemberLinks(ctx context.Context, db *pgxpool.Pool, inputDir string, 
 		switch levelRaw {
 		case "1":
 			memberLevel = "admin"
+			adminCount++
 		case "0":
 			memberLevel = "readonly"
+			readonlyCount++
 			shared.Logger.Warn("member_link level='0' mapped to readonly",
 				"estate_id", estateID, "user_id", userID)
 		default:
@@ -107,5 +112,14 @@ func MigrateMemberLinks(ctx context.Context, db *pgxpool.Pool, inputDir string, 
 	}
 
 	sum.Log()
+	shared.Logger.Info("member_link migration details",
+		"table", "estate_member_links",
+		"admin_count", adminCount,
+		"normal_count", normalCount,
+		"readonly_count", readonlyCount,
+		"fk_missing_count", fkMissingCount,
+		"dry_run", dryRun,
+		"note", "legacy backfill does not generate normal",
+	)
 	return nil
 }
