@@ -10,14 +10,15 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/ifan0927/stds-backend/internal/apperr"
-	auth "github.com/ifan0927/stds-backend/internal/auth"
+	"github.com/ifan0927/stds-backend/internal/auth"
 	"github.com/ifan0927/stds-backend/internal/config"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var (
 	// ErrNotFound marks repository lookups that did not match any row.
-	ErrNotFound = errors.New("not found")
+	ErrNotFound    = errors.New("not found")
+	passwordLength = 6
 )
 
 // AuthRepository defines the persistence methods required by the auth service.
@@ -164,7 +165,7 @@ func (s *authService) ChangeMyPassword(ctx context.Context, input ChangeMyPasswo
 	}
 	if strings.TrimSpace(input.NewPassword) == "" {
 		details = append(details, apperr.ErrorDetail{Field: "newPassword", Message: "newPassword is required"})
-	} else if len(input.NewPassword) < 6 {
+	} else if len(input.NewPassword) < passwordLength {
 		details = append(details, apperr.ErrorDetail{Field: "newPassword", Message: "newPassword must be at least 6 characters"})
 	}
 	if len(details) > 0 {

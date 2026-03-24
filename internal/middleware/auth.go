@@ -15,7 +15,7 @@ import (
 	"github.com/ifan0927/stds-backend/internal/config"
 )
 
-var (
+const (
 	authorizationKey = "Authorization"
 )
 

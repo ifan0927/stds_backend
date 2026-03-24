@@ -20,9 +20,8 @@ func CheckEstateAccess(ctx context.Context, estateID int64) (accessLevel string,
 	if err != nil {
 		return "", err
 	}
-	accessRole := userState.EstateRoles
 
-	accessLevel, ok := accessRole[estateID]
+	accessLevel, ok := userState.EstateRoles[estateID]
 	if !ok {
 		return "", apperr.NewEstateAccessDeniedError()
 	}
