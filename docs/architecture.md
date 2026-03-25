@@ -12,6 +12,7 @@ internal/
 ├── api/          ← oapi-codegen 生成，唯讀，不手動修改
 ├── handler/      ← HTTP handler 實作，精簡，只做 request parsing + 呼叫 service + 回傳 response
 ├── middleware/   ← auth、logging、error handling
+├── model/        ← 所有 GORM model（集中管理，各模組共用）
 ├── repository/   ← GORM query，資料存取層
 └── service/      ← 業務邏輯編排，transaction 邊界在此層管理
 
@@ -77,9 +78,22 @@ migration/        ← golang-migrate SQL 檔案
   - 有原始 `error` cause（如 DB error、外部呼叫失敗）：用 `apperr.WrapInternal(err)`，保留 cause 供 Cloud Logging 追查
   - 純邏輯狀態異常（如 context 缺少預期值）、無 cause：用 `apperr.NewInternalError()`
 
+### Model Package 慣例
+
+- 所有 GORM model 集中於 `internal/model/`，不分散在各 repository 或 service 檔案中
+- 檔案以資料表 / 業務領域命名，snake_case（例：`user.go`、`estate.go`、`estate_member_link.go`）
+- Model 型別命名使用 PascalCase，不加 `Row` 後綴（例：`model.User`、`model.Estate`）
+- `TableName()` 定義在 model 檔案內
+- Service interface 回傳 `*model.Xxx`，repository 直接回傳 GORM 查詢結果，**不做中間層 mapping**
+- Repository 內不另外定義重複的 row struct，統一使用 `model` package 的型別
+
+**設計理由：** 專案規模小、schema 自己設計、無換 ORM 需求，額外的 mapping layer 只增加 boilerplate 而無收益。
+
 ### DTO / Model Mapping
 
-_待第一個模組完成後補充。_
+Service 層與 handler 層之間仍使用 Input/Output struct 傳遞業務邏輯參數（例：`CreateEstateInput`、`EstateSummary`），這些 struct 定義在對應的 `service/` 檔案中，與 `model/` 的 GORM struct 分開。
+
+_具體欄位慣例待第一個模組完成後補充。_
 
 ### 跨模組 Transaction 慣例
 
@@ -176,6 +190,44 @@ estateService := service.NewEstateService(
 - Middleware 傳遞 context 給下層時使用 `c.Request.Context()`，不直接傳 `*gin.Context`
 - JWT Claims 僅包含 `sub`（userID）、`username`、`role`（系統層角色 admin/user）、`exp`、`iat`；**物業存取清單不放入 JWT**
 - 物業層授權（member_level）由 `StateLoader` 在每次 request 動態從 DB 載入，結果存入 `*auth.UserState`；handler 從 `UserState` 取 estate 存取資訊
+
+### 授權框架（Authorization Framework）
+
+所有 endpoint 的授權檢查依以下三層分類執行：
+
+#### 資源類型分類
+
+| 類型 | 說明 | 授權依據 |
+|------|------|--------|
+| **系統類** | 管理 estate/user/group 及物業成員分配的 admin-only endpoint | `role=admin`（JWT claims） |
+| **物業業務類** | 嵌套在 `/v1/estates/{estateId}/` 下的業務 endpoint | estate `memberLevel` |
+| **全域業務類** | 不嵌套在特定物業下的全域資源（如 `/v1/tenants`） | `role`（JWT claims） |
+
+#### 物業業務類 — HTTP Method 對應 memberLevel
+
+| HTTP Method | 所需 memberLevel |
+|-------------|-----------------|
+| GET | ≥ readonly（任何物業成員） |
+| POST / PUT / PATCH | ≥ normal |
+| DELETE | = admin |
+
+全域業務類套用同樣邏輯但對象改為系統 `role`（DELETE → role=admin；POST/PUT → role=user）。
+
+#### 系統類 endpoint 清單
+
+- `POST/PUT/DELETE /v1/estates`
+- `POST/PUT /v1/users`（及所有批次操作）
+- `POST/PUT/DELETE /v1/groups`
+- `PUT /v1/estates/{estateId}/members`（成員清單分配）
+- `PATCH /v1/estates/{estateId}/members/{userId}`（memberLevel 異動）
+
+#### 已確認例外（偏離基本規則的 endpoint）
+
+| Endpoint | 預期規則 | 實際規則 | 原因 |
+|----------|----------|----------|------|
+| `PUT .../facilities` | admin | ≥ normal | 設施備忘錄為一般操作，非管理行為 |
+| `DELETE .../schedules/{id}` | admin | ≥ normal | 日誌作者應有權刪除自己的內容 |
+| `DELETE .../replies/{id}` | admin | ≥ normal | 同上 |
 
 ### ListEstates 授權 Filter 慣例
 

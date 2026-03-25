@@ -8,11 +8,11 @@
 
 ### 業務邏輯步驟
 1. 驗證請求者具備系統管理員角色（`role=admin`）
-2. 驗證必填欄位（title、shortTitle、ownerName、ownerEmail、electricityRate、electricityBillingCycle）
+2. 驗證必填欄位（title、shortTitle、ownerName、ownerUsername、ownerEmail、electricityRate、electricityBillingCycle）
 3. 驗證 ownerEmail 格式合法
-4. 以 ownerEmail 查詢資料庫是否已有相同 email 的使用者帳號
-   - 若有：取得現有使用者的 userId
-   - 若無：自動建立新使用者帳號，username 取 ownerUsername，`role = 'user'`，初始密碼隨機產生
+4. 以 ownerUsername 查詢資料庫是否已有相同 username 的使用者帳號
+   - 若有：取得現有使用者的 userId（該帳號已存在，不重新建立）
+   - 若無：自動建立新使用者帳號，username 取 ownerUsername，name 取 ownerName，email 取 ownerEmail，`role = 'user'`，初始密碼隨機產生
 5. 若業主 user 尚未在「業主」user_group 中，將其加入
 6. 寫入 estates 資料表，關聯 ownerUserId
 7. 將業主加入 estate_member_links，member_level = readonly
@@ -23,7 +23,7 @@
 
 ### Side Effects
 - Email 通知：若自動建立業主帳號（步驟 4 無：分支），commit 後寄送帳號開通通知（含初始密碼）給 ownerEmail
-- 其他副作用：自動建立系統使用者帳號（若同 email 帳號不存在）；將業主加入「業主」user_group；將業主加入 estate_member_links（member_level = readonly）
+- 其他副作用：自動建立系統使用者帳號（若同 username 帳號不存在）；將業主加入「業主」user_group；將業主加入 estate_member_links（member_level = readonly）
 
 ### PHP 參考
 - `estate/index.php:insert_estate`（L121-214）
@@ -73,7 +73,7 @@
 ## PUT /v1/estates/{estateId}/facilities
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
+1. 驗證請求者具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 estateId 存在
 3. 驗證 facilityName 存在於 estate.facilities 清單中；若不存在回傳 `VALIDATION_ERROR`（details.field = facilityName）
 4. 更新對應設施的備忘錄記錄（upsert：存在則更新，不存在則建立）
@@ -92,7 +92,7 @@
 ## PUT /v1/estates/{estateId}/members
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
+1. 驗證請求者具備系統管理員角色（role=admin）
 2. 驗證 estateId 存在
 3. 驗證 userIds 陣列無重複值；若有重複回傳 400 `VALIDATION_ERROR`
 4. 驗證每個 userId 存在於使用者資料表
@@ -115,7 +115,7 @@
 ## PATCH /v1/estates/{estateId}/members/{userId}
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
+1. 驗證請求者具備系統管理員角色（role=admin）
 2. 驗證 estateId 存在（middleware 已驗 UserState 包含此 estateId 的存取權）
 3. 驗證 userId 存在於此物業的成員清單（estate_member_links）
 4. 若提供 calendarTextColor 或 calendarBgColor，驗證格式為合法 hex 色碼（`#RRGGBB`）
@@ -135,7 +135,7 @@
 ## POST /v1/estates/{estateId}/rooms
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限或系統管理員
+1. 驗證請求者具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 estateId 存在
 3. 驗證 roomNumber 不為空
 4. 驗證同 estate 內 roomNumber 不重複；若重複回傳 409 `ROOM_NUMBER_ALREADY_EXISTS`
@@ -156,7 +156,7 @@
 ## PUT /v1/estates/{estateId}/rooms/{roomId}
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限或系統管理員
+1. 驗證請求者具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 estateId 和 roomId 存在，且 room 屬於該 estate
 3. 若提供 zone，驗證 zone 值存在於 estate.zones 清單
 4. 更新 rooms 資料表
@@ -193,7 +193,7 @@
 ## POST /v1/estates/{estateId}/rooms/{roomId}/actions/copy
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限或系統管理員
+1. 驗證請求者具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 roomId 存在且屬於 estateId
 3. 讀取原房間所有欄位
 4. 計算新房號：取原房號首字元 + (原末尾數字 + 1)，例如 A101 → A102
@@ -216,7 +216,7 @@
 ## PUT /v1/estates/{estateId}/rooms/sort
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限或系統管理員
+1. 驗證請求者具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 estateId 存在
 3. 允許空清單（estate 目前無房間時合法）；空清單時跳過後續步驟，直接回傳 200 空陣列
 4. 驗證提交清單中的所有 roomId 均屬於 estateId；若有不屬於的 roomId 回傳 `VALIDATION_ERROR`
@@ -256,7 +256,7 @@
 ## PUT /v1/tenants/{tenantId}
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證
+1. 驗證請求者已認證（任何已登入使用者，role=user 以上）
 2. 驗證 tenantId 存在
 3. 驗證必填欄位（name）
 4. 更新 tenants 資料表
@@ -274,7 +274,7 @@
 ## DELETE /v1/tenants/{tenantId}
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證
+1. 驗證請求者具備系統管理員角色（role=admin）
 2. 驗證 tenantId 存在
 3. 查詢 rent_tenant_links，若該房客有任何關聯租約則回傳 409 `TENANT_HAS_ACTIVE_RENTS`
 4. 刪除 tenants 資料表記錄
@@ -296,7 +296,7 @@
 ## POST /v1/estates/{estateId}/rents
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
+1. 驗證請求者具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 estateId 存在（middleware 已驗 UserState 包含此 estateId 的存取權）
 3. 驗證必填欄位（roomId、startDate、endDate、paymentMethod、deposit、initialElectricReading）
 4. 驗證 endDate > startDate
@@ -320,7 +320,7 @@
 ## PUT /v1/estates/{estateId}/rents/{rentId}
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限或系統管理員
+1. 驗證請求者具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 estateId 存在，rentId 存在且屬於 estateId
 3. 查詢租約 status；若 status=archived 則回傳 409 `RENT_ALREADY_TERMINATED`
 4. 驗證必填欄位
@@ -360,7 +360,7 @@
 ## POST /v1/estates/{estateId}/rents/{rentId}/tenants
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限或系統管理員
+1. 驗證請求者具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 rentId 存在且屬於 estateId
 3. 驗證必填欄位（tenantId）
 4. 驗證 tenantId 存在於 tenants 資料表；若不存在回傳 404 `TENANT_NOT_FOUND`
@@ -380,7 +380,7 @@
 ## PUT /v1/estates/{estateId}/rents/{rentId}/tenants/{tenantId}
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限或系統管理員
+1. 驗證請求者具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 tenantId 存在且已關聯至此 rentId（查詢 rent_tenant_links）
 3. 驗證必填欄位（name）
 4. 更新 tenants 主檔記錄（與 PUT /v1/tenants/{tenantId} 相同效果）
@@ -415,7 +415,7 @@
 ## POST /v1/estates/{estateId}/rents/{rentId}/actions/terminate-preview
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限或系統管理員
+1. 驗證請求者具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 rentId 存在且屬於 estateId
 3. 查詢租約 status；若 status=archived 則回傳 409 `RENT_ALREADY_TERMINATED`
 4. 驗證必填欄位（terminationDate、finalElectricReading、reason）
@@ -439,7 +439,7 @@
 ## POST /v1/estates/{estateId}/rents/{rentId}/actions/terminate
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限或系統管理員
+1. 驗證請求者具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 rentId 存在且屬於 estateId
 3. 查詢租約 status；若 status=archived 則回傳 409 `RENT_ALREADY_TERMINATED`
 4. 驗證必填欄位（terminationDate、finalElectricReading、reason）
@@ -468,7 +468,7 @@
 ## POST /v1/estates/{estateId}/rents/{rentId}/actions/reactivate
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限或系統管理員
+1. 驗證請求者具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 rentId 存在且屬於 estateId
 3. 查詢租約 status；若 status=active 則已是現役（不需重新啟用，回傳 409 `RENT_ALREADY_ACTIVE`）
 4. 查詢同一 roomId 是否已有其他 status=active 的租約；若有則回傳 409 `ROOM_ALREADY_RENTED`
@@ -495,7 +495,7 @@
 ## PATCH /v1/estates/{estateId}/electric-readings
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
+1. 驗證請求者具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 estateId 存在（middleware 已驗 UserState 包含此 estateId 的存取權）
 3. 驗證 items 陣列不為空
 4. 對每個 item 驗證：
@@ -708,7 +708,7 @@
 ## POST /v1/estates/{estateId}/accountings
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
+1. 驗證請求者具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 estateId 存在（middleware 已驗 UserState 包含此 estateId 的存取權）
 3. 驗證必填欄位（accountingDate、income、expenditure）
 4. 驗證 income >= 0 且 expenditure >= 0
@@ -733,7 +733,7 @@
 ## PUT /v1/estates/{estateId}/accountings/{accountingId}
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限或系統管理員
+1. 驗證請求者具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 accountingId 存在且屬於此 estateId；若不存在回傳 404 `ACCOUNTING_NOT_FOUND`
 3. 驗證必填欄位（accountingDate、income、expenditure）
 4. 驗證 income >= 0 且 expenditure >= 0
@@ -773,7 +773,7 @@
 ## GET /v1/estates/{estateId}/accountings/overview
 
 ### 業務邏輯步驟（複雜查詢，需列出）
-1. 驗證請求者具備此物業的管理員權限或系統管理員
+1. 驗證請求者已認證且為此物業成員（任何 memberLevel 均可，包含 readonly）或系統管理員
 2. 驗證 estateId 存在（middleware 已驗 UserState 包含此 estateId 的存取權）
 3. 若提供 periodFrom，驗證日期格式合法（YYYY-MM-DD）；不提供時預設當月 1 日
 4. 若提供 periodTo，驗證日期格式合法（YYYY-MM-DD）；不提供時預設今日
@@ -1094,7 +1094,7 @@
 ## DELETE /v1/estates/{estateId}/rooms/{roomId}/attachments/{attachmentId}
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
+1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
 2. 驗證 roomId 存在且屬於 estateId；若不存在回傳 404 `ROOM_NOT_FOUND`
 3. 驗證 attachmentId 存在且屬於此 roomId；若不存在回傳 404 `ATTACHMENT_NOT_FOUND`
 4. 從資料庫取得 storageObjectPath
@@ -1195,7 +1195,7 @@
 ## DELETE /v1/estates/{estateId}/rents/{rentId}/attachments/{attachmentId}
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
+1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
 2. 驗證 rentId 存在且屬於 estateId；若不存在回傳 404 `RENT_NOT_FOUND`
 3. 驗證 attachmentId 存在且屬於此 rentId；若不存在回傳 404 `ATTACHMENT_NOT_FOUND`
 4. 從資料庫取得 storageObjectPath，刪除 Cloud Storage 物件
@@ -1236,7 +1236,7 @@
 ## DELETE /v1/estates/{estateId}/schedules/{scheduleId}/attachments/{attachmentId}
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
+1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
 2. 驗證 scheduleId 存在且屬於 estateId；若不存在回傳 404 `SCHEDULE_NOT_FOUND`
 3. 驗證 attachmentId 存在且屬於此 scheduleId；若不存在回傳 404 `ATTACHMENT_NOT_FOUND`
 4. 從資料庫取得 storageObjectPath，刪除 Cloud Storage 物件
@@ -1278,7 +1278,7 @@
 ## DELETE /v1/estates/{estateId}/schedules/{scheduleId}/replies/{replyId}/attachments/{attachmentId}
 
 ### 業務邏輯步驟
-1. 驗證請求者已認證且具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
+1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
 2. 驗證 scheduleId 存在且屬於 estateId；若不存在回傳 404 `SCHEDULE_NOT_FOUND`
 3. 驗證 replyId 存在且屬於此 scheduleId
 4. 驗證 attachmentId 存在且屬於此 replyId；若不存在回傳 404 `ATTACHMENT_NOT_FOUND`
@@ -1298,7 +1298,7 @@
 ## POST /v1/estates/{estateId}/facilities/{facilityName}/attachments
 
 ### 業務邏輯步驟
-1. 驗證請求者具備此物業的管理員權限（memberLevel=admin）或系統管理員
+1. 驗證請求者具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員
 2. 驗證 estateId 存在；若不存在回傳 404 `ESTATE_NOT_FOUND`
 3. 驗證 facilityName（URL decoded 後）存在於 estate.facilities 清單；若不存在回傳 400 `VALIDATION_ERROR`（details.field = facilityName）
 4. 驗證上傳檔案存在，檔案大小 <= 50MB
