@@ -38,14 +38,12 @@
 1. 驗證請求者具備系統管理員角色
 2. 驗證 estateId 存在
 3. 驗證 JWT 中 estateId 授權範圍（middleware）
-4. 驗證必填欄位
-5. 若 ownerEmail 異動，驗證新 email 是否對應到**不同**的現有使用者；若是則回傳 400（不允許透過 PUT 切換業主）
-6. 更新 estates 資料表；若 ownerEmail / ownerName 有異動，在同一 transaction 內同步更新對應的 users 記錄
-7. 回傳 200 + 完整更新後的物業詳情
+4. 更新 estates 資料表
+5. 回傳 200 + 完整更新後的物業詳情
 
 ### Side Effects
 - Email 通知：無
-- 其他副作用：若 ownerEmail / ownerName 異動，同步更新 users 表對應欄位（同一 transaction）；不重建帳號，不更動 user_group / estate_member_links
+- 其他副作用：無
 
 ### PHP 參考
 - `estate/index.php:update_estate`（L217-280）

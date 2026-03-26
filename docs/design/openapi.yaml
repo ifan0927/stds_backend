@@ -273,7 +273,7 @@ paths:
         以完整清單取代目前的物業成員分配。
         提交 userId 陣列，系統比對差異後新增/移出成員。
         userIds 不可包含重複值，重複時回傳 400 VALIDATION_ERROR。
-        僅具管理員權限（memberLevel=admin）的成員或系統管理員可執行。
+        僅系統管理員（role=admin）可執行；物業成員 memberLevel 不適用此端點。
       operationId: updateEstateMembers
       tags: [Estate]
       security:
@@ -314,7 +314,7 @@ paths:
       summary: 更新單一成員設定
       description: |
         更新物業成員的職稱、所屬單位、管理權限、行事曆顏色。
-        僅具管理員權限（memberLevel=admin）的成員或系統管理員可執行。
+        僅系統管理員（role=admin）可執行；物業成員 memberLevel 不適用此端點。
       operationId: updateEstateMember
       tags: [Estate]
       security:
@@ -402,6 +402,7 @@ paths:
 
     post:
       summary: 新增房間
+      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: createRoom
       tags: [Estate]
       security:
@@ -444,6 +445,7 @@ paths:
         拖曳排序後提交完整的房間排序清單。
         提交所有 roomId 及其對應的新 sortOrder。
         允許提交空清單（estate 目前無房間時合法），server 不執行任何更新。
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: updateRoomSort
       tags: [Estate]
       security:
@@ -507,6 +509,7 @@ paths:
 
     put:
       summary: 更新房間
+      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: updateRoom
       tags: [Estate]
       security:
@@ -573,6 +576,7 @@ paths:
         新房號規則：取原房號首字元 + (原末尾數字 + 1)，例如 A101 → A102。
         排序設為原排序 + 1。
         附件不複製（待檔案模組確認）。
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: copyRoom
       tags: [Estate]
       security:
@@ -659,6 +663,7 @@ paths:
       description: |
         建立新租約，並指定繳費方式、押金、起始電錶度數、提前入住日等。
         同一房間不得同時存在兩筆現役租約（estate_rent_enable=1）。
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: createRent
       tags: [Rent]
       security:
@@ -761,6 +766,7 @@ paths:
       description: |
         完整更新租約資料。
         已退租（status=archived）的租約不可修改，回傳 409 RENT_ALREADY_TERMINATED。
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: updateRent
       tags: [Rent]
       security:
@@ -923,6 +929,7 @@ paths:
         計算退租所需的電費差值、應退押金、毀損費、清潔費等，
         回傳結算預覽資料供確認，不寫入任何資料庫記錄。
         需提供退租日期、退租時電錶度數、原因及額外費用。
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: terminateRentPreview
       tags: [Rent]
       security:
@@ -962,6 +969,7 @@ paths:
         確認退租，寫入帳務記錄（電費、退押金、毀損費、清潔費等），
         並將租約狀態設為 archived（estate_rent_enable=0）。
         提交資料需與 terminate-preview 計算結果一致（server 端重新驗算）。
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: terminateRent
       tags: [Rent]
       security:
@@ -1000,6 +1008,7 @@ paths:
       description: |
         將已封存的租約（status=archived）重新設為現役（status=active）。
         若該房間目前已有其他現役租約，操作被擋。
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: reactivateRent
       tags: [Rent]
       security:
@@ -1072,6 +1081,7 @@ paths:
       description: |
         將已存在於系統中的房客（tenantId）關聯至指定租期。
         房客主檔需先透過 POST /v1/tenants 建立。
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: linkTenantToRent
       tags: [Rent]
       security:
@@ -1156,6 +1166,7 @@ paths:
       description: |
         更新房客主檔資料。操作效果與 PUT /v1/tenants/{tenantId} 相同。
         在租期情境下提供此端點以方便直接從租期詳情頁面更新房客資料。
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: updateRentTenant
       tags: [Rent]
       security:
@@ -1459,6 +1470,7 @@ paths:
         - 以 [roomId, year, month] 為唯一鍵執行 upsert：存在則更新，不存在則建立
         - 僅提交有數值的格子，空白格子不處理（不清零）
         - 提交的 roomId 必須屬於 estateId
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: upsertElectricReadings
       tags: [Electric]
       security:
@@ -1927,6 +1939,7 @@ paths:
         新增一筆帳務記錄（收入或支出），並關聯至指定的業務物件。
         - income 與 expenditure 不可同時為非零值
         - 若 paymentMethod 為「現金」，cashAccountId 欄位預留供未來零用金功能使用（目前不觸發副作用）
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: createAccounting
       tags: [Accounting]
       security:
@@ -1974,6 +1987,7 @@ paths:
         - 各科目加總明細
 
         預設期間為當月（月初至今）。可傳入 titleId 查詢特定科目的加總。
+        任何物業成員均可存取（memberLevel ≥ readonly）或系統管理員。
       operationId: getAccountingOverview
       tags: [Accounting]
       security:
@@ -2043,6 +2057,7 @@ paths:
         完整更新指定帳務記錄。
         - income 與 expenditure 不可同時為非零值
         - linkedResourceType 與 linkedResourceId 更新後，舊的關聯關係不再保留
+        需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: updateAccounting
       tags: [Accounting]
       security:
@@ -2942,7 +2957,7 @@ paths:
 
     delete:
       summary: 刪除房間附件
-      description: 同步刪除 Cloud Storage 物件與資料庫記錄。需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
+      description: 同步刪除 Cloud Storage 物件與資料庫記錄。需具備此物業的管理員權限（memberLevel=admin）或系統管理員。
       operationId: deleteRoomAttachment
       tags: [Attachments]
       security:
@@ -3025,6 +3040,7 @@ paths:
 
     post:
       summary: 上傳設施圖片
+      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
       operationId: uploadFacilityAttachment
       tags: [Attachments]
       security:
@@ -3331,7 +3347,7 @@ paths:
 
     delete:
       summary: 刪除租期附件
-      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
+      description: 需具備此物業的管理員權限（memberLevel=admin）或系統管理員。
       operationId: deleteRentAttachment
       tags: [Attachments]
       security:
@@ -3518,7 +3534,7 @@ paths:
 
     delete:
       summary: 刪除日誌附件
-      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
+      description: 需具備此物業的管理員權限（memberLevel=admin）或系統管理員。
       operationId: deleteScheduleAttachment
       tags: [Attachments]
       security:
@@ -3707,7 +3723,7 @@ paths:
 
     delete:
       summary: 刪除回應附件
-      description: 需具備此物業的 normal 以上權限（memberLevel ∈ {admin, normal}）或系統管理員。
+      description: 需具備此物業的管理員權限（memberLevel=admin）或系統管理員。
       operationId: deleteReplyAttachment
       tags: [Attachments]
       security:
@@ -4256,7 +4272,6 @@ components:
 
     EstateUpdateRequest:
       type: object
-      required: [title, shortTitle, ownerName, ownerEmail, electricityRate, electricityBillingCycle]
       properties:
         title:
           type: string
@@ -4266,15 +4281,6 @@ components:
           type: string
           maxLength: 255
           example: 陽光
-        ownerName:
-          type: string
-          maxLength: 255
-          example: 王大明
-        ownerEmail:
-          type: string
-          format: email
-          maxLength: 255
-          example: wang@example.com
         address:
           type: string
           maxLength: 255
